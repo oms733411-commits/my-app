@@ -1,13 +1,16 @@
 const $=id=>document.getElementById(id);
 let rows=[],autoPayload=null,dataSource="AUTO",activeSymbol=localStorage.getItem("kronos-symbol")||"RELIANCE.NS";
+const LIVE_REFRESH_MS=15000;
+let liveQuote=null,btcSocket=null;
 
 $("symbolInput").value=activeSymbol;
 $("csv").addEventListener("change",e=>readCSV(e.target.files[0]));
 $("shot").addEventListener("change",e=>showScreenshot(e.target.files[0]));
 $("horizon").addEventListener("change",()=>{if(rows.length)render();});
 $("range").addEventListener("change",()=>{if(rows.length)render();});
-$("symbolInput").addEventListener("keydown",e=>{if(e.key==="Enter")loadMarket();
-setInterval(() => { if (!document.hidden && !document.body.classList.contains("custom-mode")) loadMarket(true); }, LIVE_REFRESH_MS);});
+$("symbolInput").addEventListener("keydown",e=>{if(e.key==="Enter")loadMarket();});
+setInterval(()=>{if(!document.hidden && dataSource==="AUTO") refreshLiveQuote();},LIVE_REFRESH_MS);
+window.addEventListener("beforeunload",()=>{if(btcSocket)btcSocket.close();});
 ["dragenter","dragover"].forEach(x=>$("drop").addEventListener(x,e=>{e.preventDefault();$("drop").classList.add("drag");}));
 ["dragleave","drop"].forEach(x=>$("drop").addEventListener(x,e=>{e.preventDefault();$("drop").classList.remove("drag");}));
 $("drop").addEventListener("drop",e=>readCSV(e.dataTransfer.files[0]));
@@ -15,6 +18,50 @@ $("drop").addEventListener("drop",e=>readCSV(e.dataTransfer.files[0]));
 function setStatus(t,ok=true){$("statusText").textContent=t;$("statusDot").classList.toggle("bad",!ok);}
 function setBusy(v){$("refreshBtn").disabled=v;$("refreshBtn").textContent=v?"Loading…":"Refresh";}
 function fmt(n){return Number(n).toLocaleString(undefined,{maximumFractionDigits:2});}
+async function fetchLiveQuote(symbol){
+  if(symbol==="BTC-USD"){
+    return await new Promise((resolve,reject)=>{
+      if(btcSocket) try{btcSocket.close();}catch{}
+      const ws=new WebSocket("wss://stream.binance.com:9443/ws/btcusdt@ticker");
+      btcSocket=ws; let done=false;
+      const finish=(v,err)=>{if(done)return;done=true;try{ws.close();}catch{};err?reject(err):resolve(v);};
+      ws.onmessage=e=>{try{const d=JSON.parse(e.data);finish({price:+d.c,change:+d.P,source:"Binance live",time:new Date(+d.E)});}catch(err){finish(null,err);}};
+      ws.onerror=()=>finish(null,Error("BTC live stream unavailable"));
+      setTimeout(()=>finish(null,Error("BTC live stream timeout")),5000);
+    });
+  }
+  const url="https://query1.finance.yahoo.com/v8/finance/chart/"+encodeURIComponent(symbol)+"?interval=1m&range=1d";
+  const r=await fetch(url,{cache:"no-store"});
+  if(!r.ok)throw Error("live quote unavailable");
+  const j=await r.json(),m=j.chart?.result?.[0]?.meta||{};
+  const price=Number(m.regularMarketPrice ?? m.previousClose);
+  if(!Number.isFinite(price))throw Error("no live price");
+  const change=Number(m.regularMarketChangePercent);
+  return {price,change:Number.isFinite(change)?change:null,source:"Yahoo Finance quote",time:m.regularMarketTime?new Date(m.regularMarketTime*1000):new Date()};
+}
+async function refreshLiveQuote(){
+  if(dataSource!=="AUTO"||!activeSymbol)return;
+  try{
+    liveQuote=await fetchLiveQuote(activeSymbol);
+    if(!liveQuote||!Number.isFinite(liveQuote.price))return;
+    $("last").textContent=fmt(liveQuote.price);
+    $("lastMini").textContent=fmt(liveQuote.price);
+    $("lastDate").textContent="LIVE QUOTE • "+liveQuote.time.toLocaleTimeString();
+    $("dataMini").textContent="LIVE";
+    $("updatedMini").textContent=liveQuote.source;
+    const item=autoPayload?.symbols?.[activeSymbol];
+    const n=+$("horizon").value;
+    const pred=item?.forecast?.[String(n)]||[];
+    const end=pred.at(-1)?.close;
+    if(Number.isFinite(end)){
+      const pct=(end/liveQuote.price-1)*100;
+      $("forecastPct").textContent=(pct>=0?"+":"")+pct.toFixed(2)+"% from live price";
+      $("confidenceMini").textContent="Live price basis";
+    }
+  }catch(e){
+    $("dataMini").textContent="AUTO";
+  }
+}
 
 async function loadPayload(){
  const r=await fetch("data/market.json?"+Date.now(),{cache:"no-store"});
@@ -29,7 +76,7 @@ async function loadMarket(){
    const item=autoPayload.symbols?.[s];
    if(!item)throw Error("Ticker not in generated universe");
    rows=item.history.map(x=>({date:x.date,close:+x.close}));
-   render();setStatus("KRONOS READY • "+item.last_date,true);
+   render();setStatus("KRONOS READY • "+item.last_date,true);refreshLiveQuote();
  }catch(e){
    setStatus("TICKER NOT AVAILABLE",false);
    $("signalText").textContent="This ticker is not in the current automatic generated universe. Upload a CSV for custom history or choose a Quick Access market.";
