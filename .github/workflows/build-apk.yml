@@ -46,7 +46,7 @@ jobs:
         run: |
           set -e
           if command -v gradle >/dev/null 2>&1; then
-            gradle wrapper --gradle-version 8.13
+            gradle wrapper --gradle-version 9.3.1
           else
             echo "ERROR: system Gradle is not available on this GitHub runner"
             exit 1
