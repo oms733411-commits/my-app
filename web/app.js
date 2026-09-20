@@ -8,6 +8,9 @@ $("csv").addEventListener("change",e=>readCSV(e.target.files[0]));
 $("shot").addEventListener("change",e=>showScreenshot(e.target.files[0]));
 $("horizon").addEventListener("change",()=>{if(rows.length)render();});
 $("range").addEventListener("change",()=>{if(rows.length)render();});
+$("chartType").addEventListener("change",()=>{if(rows.length)render();});
+$("chart").addEventListener("mousemove",chartHover);
+$("chart").addEventListener("mouseleave",()=>$("chartTip").classList.add("hidden"));
 $("symbolInput").addEventListener("keydown",e=>{if(e.key==="Enter")loadMarket();});
 setInterval(()=>{if(!document.hidden && dataSource==="AUTO") refreshLiveQuote();},LIVE_REFRESH_MS);
 window.addEventListener("beforeunload",()=>{if(btcSocket)btcSocket.close();});
@@ -75,7 +78,7 @@ async function loadMarket(){
    autoPayload=await loadPayload();
    const item=autoPayload.symbols?.[s];
    if(!item)throw Error("Ticker not in generated universe");
-   rows=item.history.map(x=>({date:x.date,close:+x.close}));
+   rows=item.history.map(x=>({date:x.date,open:+x.open,high:+x.high,low:+x.low,close:+x.close,volume:+(x.volume||0)}));
    render();setStatus("KRONOS READY • "+item.last_date,true);refreshLiveQuote();
  }catch(e){
    setStatus("TICKER NOT AVAILABLE",false);
@@ -85,7 +88,7 @@ async function loadMarket(){
 
 function render(){
  const s=activeSymbol,item=autoPayload?.symbols?.[s],n=+$("horizon").value,range=+$("range").value;
- $("symbol").textContent=(dataSource==="CSV"?"CUSTOM • ":"")+s+" • 1D";
+ $("symbol").textContent=(dataSource==="CSV"?"CUSTOM • ":"")+s+" • DAILY";
  const hist=rows.slice(-Math.min(range,rows.length)),last=hist.at(-1).close;
  $("last").textContent=fmt(last);$("lastMini").textContent=fmt(last);$("lastDate").textContent="Latest available • "+(item?.last_date||hist.at(-1).date);
  $("horizonOut").textContent=n+" sessions";
@@ -114,16 +117,33 @@ function render(){
    clearBacktest("Custom CSV loaded. Automatic model backtests are kept separate from custom browser data.");
  }
 }
+let chartState={hist:[],pred:[],live:null,mn:0,mx:1,pad:44,w:0,h:0,total:0};
 function draw(hist,pred){
  const c=$("chart"),x=c.getContext("2d"),dpr=devicePixelRatio||1,w=c.clientWidth,h=c.clientHeight;
  c.width=w*dpr;c.height=h*dpr;x.setTransform(dpr,0,0,dpr,0,0);x.clearRect(0,0,w,h);
- const hv=hist.map(v=>+v.close),pv=pred.map(v=>+v.close),all=hv.concat(pv),live=liveQuote?.price,scaleVals=Number.isFinite(live)?all.concat([live]):all,mn=Math.min(...scaleVals),mx=Math.max(...scaleVals),pad=32;
- const X=i=>pad+i*(w-pad*2)/Math.max(1,all.length-1),Y=v=>h-pad-(v-mn)/(mx-mn||1)*(h-pad*2);
+ const live=liveQuote?.price, all=hist.concat(pred.map(v=>({date:v.date,close:+v.close}))), vals=hist.flatMap(v=>[v.low??v.close,v.high??v.close]).concat(pred.map(v=>+v.close));
+ if(Number.isFinite(live))vals.push(live); let mn=Math.min(...vals),mx=Math.max(...vals),pad=42; const span=mx-mn||1; mn-=span*.06;mx+=span*.06;
+ chartState={hist,pred,live,mn,mx,pad,w,h,total:all.length};
+ const X=i=>pad+i*(w-pad*2)/Math.max(1,all.length-1),Y=v=>h-pad-(v-mn)/(mx-mn)*(h-pad*2);
+ x.fillStyle="#0b0f15";x.fillRect(0,0,w,h); x.font="10px Inter, sans-serif";
  x.strokeStyle="#202733";x.lineWidth=1;
- for(let i=0;i<5;i++){let yy=pad+i*(h-pad*2)/4;x.beginPath();x.moveTo(pad,yy);x.lineTo(w-pad,yy);x.stroke();}
- x.strokeStyle="#e9edf3";x.lineWidth=2;x.beginPath();hv.forEach((v,i)=>i?x.lineTo(X(i),Y(v)):x.moveTo(X(i),Y(v)));x.stroke();
- if(pv.length){x.strokeStyle="#a9ff6b";x.lineWidth=2;x.setLineDash([5,5]);x.beginPath();x.moveTo(X(hv.length-1),Y(hv.at(-1)));pv.forEach((v,j)=>x.lineTo(X(hv.length+j),Y(v)));x.stroke();x.setLineDash([]);}
- if(Number.isFinite(live)){const lx=X(hv.length-1),ly=Y(live);x.strokeStyle="#5bd6ff";x.lineWidth=1;x.setLineDash([3,3]);x.beginPath();x.moveTo(pad,ly);x.lineTo(w-pad,ly);x.stroke();x.setLineDash([]);x.fillStyle="#5bd6ff";x.beginPath();x.arc(lx,ly,4,0,Math.PI*2);x.fill();}
+ for(let i=0;i<5;i++){const yy=pad+i*(h-pad*2)/4;x.beginPath();x.moveTo(pad,yy);x.lineTo(w-pad,yy);x.stroke();const val=mx-(mx-mn)*i/4;x.fillStyle="#778296";x.fillText(fmt(val),6,yy+3);}
+ const ticks=Math.min(6,hist.length); for(let k=0;k<ticks;k++){const idx=Math.round(k*(hist.length-1)/Math.max(1,ticks-1));const xx=X(idx);x.fillStyle="#778296";x.fillText(shortDate(hist[idx]?.date),Math.max(pad,xx-20),h-10);}
+ const type=$("chartType").value;
+ if(type==="candles"){
+   const step=(w-pad*2)/Math.max(1,all.length-1),cw=Math.max(2,Math.min(12,step*.62));
+   hist.forEach((v,i)=>{const o=+v.open||+v.close,hi=+v.high||+v.close,lo=+v.low||+v.close,cl=+v.close;const up=cl>=o; x.strokeStyle=up?"#79e38b":"#ff7f7f";x.fillStyle=up?"#79e38b":"#ff7f7f";x.lineWidth=1;x.beginPath();x.moveTo(X(i),Y(hi));x.lineTo(X(i),Y(lo));x.stroke();const top=Y(Math.max(o,cl)),bot=Y(Math.min(o,cl));x.fillRect(X(i)-cw/2,top,cw,Math.max(1,bot-top));});
+ }else{
+   x.strokeStyle="#e9edf3";x.lineWidth=2;x.beginPath();hist.forEach((v,i)=>i?x.lineTo(X(i),Y(+v.close)):x.moveTo(X(i),Y(+v.close)));x.stroke();
+   if(type==="area"){x.lineTo(X(hist.length-1),h-pad);x.lineTo(X(0),h-pad);x.closePath();x.globalAlpha=.10;x.fillStyle="#e9edf3";x.fill();x.globalAlpha=1;}
+ }
+ if(pred.length){x.strokeStyle="#a9ff6b";x.lineWidth=2;x.setLineDash([6,5]);x.beginPath();x.moveTo(X(hist.length-1),Y(hist.at(-1).close));pred.forEach((v,j)=>x.lineTo(X(hist.length+j),Y(+v.close)));x.stroke();x.setLineDash([]);}
+ if(Number.isFinite(live)){const lx=X(Math.max(0,hist.length-1)),ly=Y(live);x.strokeStyle="#5bd6ff";x.lineWidth=1;x.setLineDash([3,3]);x.beginPath();x.moveTo(pad,ly);x.lineTo(w-pad,ly);x.stroke();x.setLineDash([]);x.fillStyle="#5bd6ff";x.beginPath();x.arc(lx,ly,4,0,Math.PI*2);x.fill();x.fillText("LIVE",w-pad-30,ly-7);}
+}
+function shortDate(s){const d=new Date(s+"T00:00:00");return Number.isNaN(d.getTime())?s.slice(0,10):d.toLocaleDateString(undefined,{day:"2-digit",month:"short"});}
+function chartHover(e){
+ if(!chartState.hist.length)return; const c=$("chart"),r=c.getBoundingClientRect(),px=e.clientX-r.left,pad=chartState.pad,step=(chartState.w-pad*2)/Math.max(1,chartState.total-1);let i=Math.round((px-pad)/step);i=Math.max(0,Math.min(chartState.hist.length-1,i));const v=chartState.hist[i];if(!v)return;
+ const tip=$("chartTip");tip.classList.remove("hidden");tip.innerHTML='<b>'+v.date+'</b><span>O '+fmt(v.open)+' · H '+fmt(v.high)+' · L '+fmt(v.low)+' · C '+fmt(v.close)+'</span><span>Volume '+Number(v.volume||0).toLocaleString()+'</span>';tip.style.left=Math.min(Math.max(px+12,8),c.clientWidth-205)+"px";tip.style.top=Math.max(8,e.clientY-r.top-58)+"px";
 }
 function renderBacktest(bt){
  if(!bt)return clearBacktest("No rolling backtest is available for this symbol yet.");
