@@ -35,8 +35,7 @@ jobs:
         env:
           HF_HUB_DISABLE_TELEMETRY: "1"
         run: |
-          cp -r /tmp/Kronos/model ./model
-          python scripts/generate_market.py
+          PYTHONPATH=/tmp/Kronos python scripts/generate_market.py
       - name: Commit fresh market data
         run: |
           git config user.name "kronos-market-bot"
