@@ -24,7 +24,7 @@ SYMBOLS=[
  "ASIANPAINT.NS","NESTLEIND.NS","TITAN.NS","BAJAJFINSV.NS","DRREDDY.NS",
  "CIPLA.NS","EICHERMOT.NS","HEROMOTOCO.NS","APOLLOHOSP.NS","DIVISLAB.NS",
  "BRITANNIA.NS","GRASIM.NS","HINDALCO.NS","INDUSINDBK.NS","TATACONSUM.NS",
- "BEL.NS","TRENT.NS","BPCL.NS","SHRIRAMFIN.NS","BAJAJ-AUTO.NS",
+ "BEL.NS","TRENT.NS","BPCL.NS","SHRIRAMFIN.NS","BAJAJ-AUTO.NS","IDEA.NS",
  # US
  "AAPL","MSFT","GOOGL","AMZN","NVDA","TSLA","META","NFLX","AMD","AVGO",
  "JPM","V","MA","WMT","COST","ORCL","CRM","ADBE","INTC","QCOM",
@@ -34,6 +34,8 @@ SYMBOLS=[
 
 HORIZONS=[5,10,20,30]
 LOOKBACK=400
+GROUP_INDEX=int(os.getenv("GROUP_INDEX","0"))
+GROUP_COUNT=max(1,int(os.getenv("GROUP_COUNT","1")))
 MODEL_ID="NeoQuasar/Kronos-small"
 TOKENIZER_ID="NeoQuasar/Kronos-Tokenizer-base"
 
@@ -93,7 +95,9 @@ def main():
     tokenizer.eval(); model.eval()
     predictor=KronosPredictor(model,tokenizer,device=device,max_context=512)
     result={"generated_at":pd.Timestamp.utcnow().isoformat(),"source":"Yahoo Finance via yfinance (unofficial historical market-data interface)","model":{"name":"Kronos-small","id":MODEL_ID,"tokenizer":TOKENIZER_ID,"device":device,"lookback":LOOKBACK},"symbols":{}}
-    for symbol in SYMBOLS:
+    symbols = SYMBOLS[GROUP_INDEX::GROUP_COUNT] if GROUP_COUNT > 1 else SYMBOLS
+    print("Group", GROUP_INDEX, "of", GROUP_COUNT, "symbols", len(symbols))
+    for symbol in symbols:
         try:
             df=load_symbol(symbol)
             if df is None or len(df)<LOOKBACK: continue
@@ -106,7 +110,11 @@ def main():
         except Exception as e:
             print("SKIP",symbol,repr(e))
     OUT.parent.mkdir(parents=True,exist_ok=True)
-    OUT.write_text(json.dumps(result,separators=(",",":")),encoding="utf-8")
-    print("Wrote",OUT,"symbols",len(result["symbols"]))
+    if GROUP_COUNT > 1:
+        out = OUT.with_name(f"market-group-{GROUP_INDEX}.json")
+    else:
+        out = OUT
+    out.write_text(json.dumps(result,separators=(",",":")),encoding="utf-8")
+    print("Wrote",out,"symbols",len(result["symbols"]))
 
 if __name__=="__main__": main()
