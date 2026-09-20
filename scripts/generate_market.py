@@ -5,17 +5,20 @@ import pandas as pd
 import torch
 import yfinance as yf
 
-# Upstream Kronos is cloned by CI into /tmp/Kronos.
-# Add it to sys.path BEFORE importing its model package.
 sys.path.insert(0, "/tmp/Kronos")
 from model import Kronos, KronosTokenizer, KronosPredictor
 
 ROOT=Path(__file__).resolve().parents[1]
 OUT=ROOT/"web"/"data"/"market.json"
+
+# Broad starter universe: Indian equities, US equities, crypto and gold.
+# Users can still enter any ticker supported by the generated universe or use CSV.
 SYMBOLS=[
  "RELIANCE.NS","TCS.NS","INFY.NS","HDFCBANK.NS","ICICIBANK.NS",
- "AAPL","MSFT","GOOGL","AMZN","NVDA","TSLA","META",
- "BTC-USD","ETH-USD"
+ "SBIN.NS","BHARTIARTL.NS","ITC.NS","LT.NS","HINDUNILVR.NS",
+ "KOTAKBANK.NS","AXISBANK.NS","MARUTI.NS","SUNPHARMA.NS","TATAMOTORS.NS",
+ "AAPL","MSFT","GOOGL","AMZN","NVDA","TSLA","META","NFLX","AMD",
+ "BTC-USD","ETH-USD","GC=F","XAUUSD=X"
 ]
 HORIZONS=[5,10,20,30]
 LOOKBACK=400
