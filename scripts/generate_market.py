@@ -11,26 +11,38 @@ from model import Kronos, KronosTokenizer, KronosPredictor
 ROOT=Path(__file__).resolve().parents[1]
 OUT=ROOT/"web"/"data"/"market.json"
 
-# Broad starter universe: Indian equities, US equities, crypto and gold.
-# Users can still enter any ticker supported by the generated universe or use CSV.
+# Broad liquid universe for the free scheduled pipeline.
+# This is intentionally curated rather than literally every listed security,
+# because free CI inference time is finite. CSV remains available for any custom ticker.
 SYMBOLS=[
- "RELIANCE.NS","TCS.NS","INFY.NS","HDFCBANK.NS","ICICIBANK.NS",
- "SBIN.NS","BHARTIARTL.NS","ITC.NS","LT.NS","HINDUNILVR.NS",
- "KOTAKBANK.NS","AXISBANK.NS","MARUTI.NS","SUNPHARMA.NS","TATAMOTORS.NS",
- "AAPL","MSFT","GOOGL","AMZN","NVDA","TSLA","META","NFLX","AMD",
+ # India / NSE
+ "RELIANCE.NS","TCS.NS","INFY.NS","HDFCBANK.NS","ICICIBANK.NS","SBIN.NS",
+ "BHARTIARTL.NS","ITC.NS","LT.NS","HINDUNILVR.NS","KOTAKBANK.NS","AXISBANK.NS",
+ "MARUTI.NS","SUNPHARMA.NS","TATAMOTORS.NS","M&M.NS","BAJFINANCE.NS",
+ "HCLTECH.NS","WIPRO.NS","ADANIENT.NS","ADANIPORTS.NS","NTPC.NS","POWERGRID.NS",
+ "ONGC.NS","COALINDIA.NS","TATASTEEL.NS","JSWSTEEL.NS","TECHM.NS","ULTRACEMCO.NS",
+ "ASIANPAINT.NS","NESTLEIND.NS","TITAN.NS","BAJAJFINSV.NS","DRREDDY.NS",
+ "CIPLA.NS","EICHERMOT.NS","HEROMOTOCO.NS","APOLLOHOSP.NS","DIVISLAB.NS",
+ "BRITANNIA.NS","GRASIM.NS","HINDALCO.NS","INDUSINDBK.NS","TATACONSUM.NS",
+ "BEL.NS","TRENT.NS","BPCL.NS","SHRIRAMFIN.NS","BAJAJ-AUTO.NS",
+ # US
+ "AAPL","MSFT","GOOGL","AMZN","NVDA","TSLA","META","NFLX","AMD","AVGO",
+ "JPM","V","MA","WMT","COST","ORCL","CRM","ADBE","INTC","QCOM",
+ # Crypto / commodities / gold
  "BTC-USD","ETH-USD","GC=F","XAUUSD=X"
 ]
+
 HORIZONS=[5,10,20,30]
 LOOKBACK=400
 MODEL_ID="NeoQuasar/Kronos-small"
 TOKENIZER_ID="NeoQuasar/Kronos-Tokenizer-base"
 
-def future_dates(last, n):
-    start=pd.Timestamp(last)+pd.Timedelta(days=1)
+def future_dates(last, n, symbol):
+    d=pd.Timestamp(last)+pd.Timedelta(days=1)
     dates=[]
-    d=start
+    crypto=symbol.endswith("-USD")
     while len(dates)<n:
-        if d.weekday()<5:
+        if crypto or d.weekday()<5:
             dates.append(d)
         d+=pd.Timedelta(days=1)
     return pd.Series(dates)
@@ -38,7 +50,8 @@ def future_dates(last, n):
 def load_symbol(symbol):
     raw=yf.download(symbol,period="2y",interval="1d",auto_adjust=False,progress=False,threads=False)
     if raw is None or raw.empty: return None
-    if isinstance(raw.columns,pd.MultiIndex): raw=raw.xs(symbol,axis=1,level=1,drop_level=True)
+    if isinstance(raw.columns,pd.MultiIndex):
+        raw=raw.xs(symbol,axis=1,level=1,drop_level=True)
     raw=raw.rename(columns={c:str(c).lower() for c in raw.columns})
     need=["open","high","low","close","volume"]
     if not all(c in raw.columns for c in need): return None
@@ -47,10 +60,10 @@ def load_symbol(symbol):
     raw["date"]=pd.to_datetime(raw["date"]).dt.tz_localize(None)
     return raw
 
-def predict_one(predictor, df, n):
+def predict_one(predictor, df, n, symbol):
     x=df.tail(LOOKBACK).copy()
     x_ts=x["date"]
-    y_ts=future_dates(x_ts.iloc[-1],n)
+    y_ts=future_dates(x_ts.iloc[-1],n,symbol)
     x_df=x[["open","high","low","close","volume"]].copy()
     with torch.no_grad():
         p=predictor.predict(df=x_df,x_timestamp=x_ts,y_timestamp=y_ts,pred_len=n,T=1.0,top_p=0.9,sample_count=1,verbose=False)
@@ -86,7 +99,7 @@ def main():
             if df is None or len(df)<LOOKBACK: continue
             item={"symbol":symbol,"last_date":str(df["date"].iloc[-1].date()),"last_close":float(df["close"].iloc[-1]),"history":[{"date":str(d.date()),"close":float(c)} for d,c in zip(df["date"].tail(240),df["close"].tail(240))],"forecast":{}}
             for h in HORIZONS:
-                item["forecast"][str(h)]=predict_one(predictor,df,h)
+                item["forecast"][str(h)]=predict_one(predictor,df,h,symbol)
             item["backtest"]=rolling_backtest(predictor,df,5,3)
             result["symbols"][symbol]=item
             print("OK",symbol)
