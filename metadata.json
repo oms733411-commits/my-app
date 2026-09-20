@@ -1,0 +1,7 @@
+{
+  "name": "KRONOS AI",
+  "description": "AI-Powered Financial Time-Series Forecasting using the open-source Kronos foundation model.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+
