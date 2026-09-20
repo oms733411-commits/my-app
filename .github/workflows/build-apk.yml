@@ -1,4 +1,5 @@
 name: Build Kronos APK
+# Cloud build: use Gradle 9.3.1 to match the exported project requirements.
 
 on:
   workflow_dispatch:
