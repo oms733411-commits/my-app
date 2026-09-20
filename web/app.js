@@ -117,12 +117,13 @@ function render(){
 function draw(hist,pred){
  const c=$("chart"),x=c.getContext("2d"),dpr=devicePixelRatio||1,w=c.clientWidth,h=c.clientHeight;
  c.width=w*dpr;c.height=h*dpr;x.setTransform(dpr,0,0,dpr,0,0);x.clearRect(0,0,w,h);
- const hv=hist.map(v=>+v.close),pv=pred.map(v=>+v.close),all=hv.concat(pv),mn=Math.min(...all),mx=Math.max(...all),pad=32;
+ const hv=hist.map(v=>+v.close),pv=pred.map(v=>+v.close),all=hv.concat(pv),live=liveQuote?.price,scaleVals=Number.isFinite(live)?all.concat([live]):all,mn=Math.min(...scaleVals),mx=Math.max(...scaleVals),pad=32;
  const X=i=>pad+i*(w-pad*2)/Math.max(1,all.length-1),Y=v=>h-pad-(v-mn)/(mx-mn||1)*(h-pad*2);
  x.strokeStyle="#202733";x.lineWidth=1;
  for(let i=0;i<5;i++){let yy=pad+i*(h-pad*2)/4;x.beginPath();x.moveTo(pad,yy);x.lineTo(w-pad,yy);x.stroke();}
  x.strokeStyle="#e9edf3";x.lineWidth=2;x.beginPath();hv.forEach((v,i)=>i?x.lineTo(X(i),Y(v)):x.moveTo(X(i),Y(v)));x.stroke();
  if(pv.length){x.strokeStyle="#a9ff6b";x.lineWidth=2;x.setLineDash([5,5]);x.beginPath();x.moveTo(X(hv.length-1),Y(hv.at(-1)));pv.forEach((v,j)=>x.lineTo(X(hv.length+j),Y(v)));x.stroke();x.setLineDash([]);}
+ if(Number.isFinite(live)){const lx=X(hv.length-1),ly=Y(live);x.strokeStyle="#5bd6ff";x.lineWidth=1;x.setLineDash([3,3]);x.beginPath();x.moveTo(pad,ly);x.lineTo(w-pad,ly);x.stroke();x.setLineDash([]);x.fillStyle="#5bd6ff";x.beginPath();x.arc(lx,ly,4,0,Math.PI*2);x.fill();}
 }
 function renderBacktest(bt){
  if(!bt)return clearBacktest("No rolling backtest is available for this symbol yet.");
