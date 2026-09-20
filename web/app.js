@@ -39,7 +39,7 @@ function render(){
  const s=activeSymbol,item=autoPayload?.symbols?.[s],n=+$("horizon").value,range=+$("range").value;
  $("symbol").textContent=(dataSource==="CSV"?"CUSTOM • ":"")+s+" • 1D";
  const hist=rows.slice(-Math.min(range,rows.length)),last=hist.at(-1).close;
- $("last").textContent=fmt(last);$("lastMini").textContent=fmt(last);$("lastDate").textContent=item?.last_date||hist.at(-1).date;
+ $("last").textContent=fmt(last);$("lastMini").textContent=fmt(last);$("lastDate").textContent="Latest available • "+(item?.last_date||hist.at(-1).date);
  $("horizonOut").textContent=n+" sessions";
  $("dataMini").textContent=dataSource==="AUTO"?"AUTO":"CSV";
  $("updatedMini").textContent=autoPayload?.generated_at?new Date(autoPayload.generated_at).toLocaleString():"Local";
