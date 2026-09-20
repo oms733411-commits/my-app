@@ -7,10 +7,10 @@
 </head>
 <body>
 <div class="app-shell">
-<header class="topbar"><div class="brand"><div class="brand-mark">K</div><div><b>KRONOS</b><span>AI MARKET INTELLIGENCE</span></div></div><div class="status"><i></i> LOCAL ENGINE READY</div></header>
+<header class="topbar"><div class="brand"><div class="brand-mark">K</div><div><b>KRONOS</b><span>AI MARKET INTELLIGENCE</span></div></div><div class="status"><i id="statusDot"></i> <span id="statusText">CONNECTING…</span></div></header>
 <main>
-<section class="hero"><div><p class="eyebrow">FORECAST • BACKTEST • ANALYZE</p><h1>See the market<br><em>before the move.</em></h1><p class="sub">A clean workspace for Kronos forecasting, market data, CSV analysis and model-vs-baseline backtesting.</p></div>
-<div class="hero-actions"><button class="primary" onclick="document.getElementById('csv').click()">Upload OHLCV</button><button class="ghost" onclick="loadDemo()">Load Demo</button></div></section>
+<section class="hero"><div><p class="eyebrow">FORECAST • BACKTEST • ANALYZE</p><h1>See the market<br><em>before the move.</em></h1><p class="sub">Automatic market data first. CSV is optional for custom history. Built for the original Kronos forecasting engine.</p></div>
+<div class="hero-actions"><div class="ticker"><input id="symbolInput" value="RELIANCE.NS" aria-label="Ticker symbol" placeholder="Ticker e.g. AAPL"><button class="primary" id="refreshBtn" onclick="loadMarket()">Refresh data</button></div><button class="ghost" onclick="document.getElementById('csv').click()">Upload CSV (optional)</button><button class="ghost" onclick="loadDemo()">Demo</button></div></section>
 <section class="grid">
 <div class="card chart-card"><div class="card-head"><div><span class="label">PRICE FORECAST</span><h2 id="symbol">RELIANCE • 1D</h2></div><select id="horizon"><option>5 sessions</option><option>10 sessions</option><option>20 sessions</option><option>30 sessions</option></select></div><canvas id="chart"></canvas><div class="legend"><span><i class="actual"></i>Actual</span><span><i class="forecast"></i>Kronos forecast</span><span><i class="baseline"></i>Baseline</span></div></div>
 <aside class="side">
@@ -20,7 +20,7 @@
 </section>
 <section class="lower">
 <div class="card upload"><span class="label">DATA INPUT</span><h2>Bring your own market data.</h2><p>CSV with timestamp, open, high, low, close and volume. Screenshots can be attached for visual context.</p><div class="drop" id="drop" onclick="document.getElementById('csv').click()"><div class="upload-icon">↑</div><b>Drop CSV here</b><span>or click to browse</span></div><input id="csv" type="file" accept=".csv,text/csv" hidden><label class="screenshot">Add chart screenshot <input id="shot" type="file" accept="image/*"></label></div>
-<div class="card backtest"><div class="card-head"><div><span class="label">BACKTEST</span><h2>Kronos vs baseline</h2></div><span class="pill">Rolling windows</span></div><div class="bars"><div><span>MAE</span><div class="bar"><i id="maeBar"></i></div><b id="mae">—</b></div><div><span>RMSE</span><div class="bar"><i id="rmseBar"></i></div><b id="rmse">—</b></div><div><span>Direction</span><div class="bar"><i id="dirBar"></i></div><b id="dir">—</b></div></div><p class="muted">Backtest uses the uploaded history. Model metrics shown here are computed locally from available forecast/baseline outputs.</p></div>
+<div class="card backtest"><div class="card-head"><div><span class="label">BACKTEST</span><h2>Kronos vs baseline</h2></div><span class="pill">Rolling windows</span></div><div class="bars"><div><span>MAE</span><div class="bar"><i id="maeBar"></i></div><b id="mae">—</b></div><div><span>RMSE</span><div class="bar"><i id="rmseBar"></i></div><b id="rmse">—</b></div><div><span>Direction</span><div class="bar"><i id="dirBar"></i></div><b id="dir">—</b></div></div><p class="muted" id="backtestNote">Automatic data or CSV history can be used. True Kronos-vs-actual rolling backtest runs when the original Kronos runtime is connected.</p></div>
 </section>
 </main>
 <footer>KRONOS AI <span>•</span> Private browser workspace • No account required</footer>
