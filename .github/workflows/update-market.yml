@@ -23,11 +23,23 @@ jobs:
            github.event.workflow_run.head_commit.message != 'Update Kronos market intelligence') }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        group: [0, 1, 2, 3]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+      - name: Cache model and Python packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/huggingface
+            ~/.cache/pip
+          key: kronos-${{ runner.os }}-${{ matrix.group }}-${{ hashFiles('scripts/requirements.txt') }}
       - name: Install Kronos
         run: |
           git clone --depth 1 https://github.com/shiyu-coder/Kronos.git /tmp/Kronos
@@ -37,8 +49,52 @@ jobs:
       - name: Generate forecasts
         env:
           HF_HUB_DISABLE_TELEMETRY: "1"
+          GROUP_INDEX: ${{ matrix.group }}
+          GROUP_COUNT: "4"
         run: |
           PYTHONPATH=/tmp/Kronos python scripts/generate_market.py
+      - name: Upload market group
+        uses: actions/upload-artifact@v4
+        with:
+          name: market-data-${{ matrix.group }}
+          path: web/data/market-group-${{ matrix.group }}.json
+          if-no-files-found: error
+
+  merge:
+    needs: generate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download market groups
+        uses: actions/download-artifact@v4
+        with:
+          pattern: market-data-*
+          path: web/data/groups
+          merge-multiple: true
+      - name: Merge market data
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          out = Path("web/data/market.json")
+          files = sorted(Path("web/data/groups").glob("market-group-*.json"))
+          if len(files) != 4:
+              raise SystemExit(f"Expected 4 market groups, found {len(files)}")
+
+          merged = None
+          for f in files:
+              data = json.loads(f.read_text())
+              if merged is None:
+                  merged = data
+              else:
+                  merged["symbols"].update(data.get("symbols", {}))
+
+          merged["generated_at"] = __import__("datetime").datetime.utcnow().isoformat() + "Z"
+          out.write_text(json.dumps(merged, separators=(",", ":")))
+          print("Merged", len(merged["symbols"]), "symbols")
+          PY
       - name: Commit fresh market data
         run: |
           git config user.name "kronos-market-bot"
