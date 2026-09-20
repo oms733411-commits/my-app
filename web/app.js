@@ -108,7 +108,7 @@ function showScreenshot(file){
 }
 function buildChips(){
  const wrap=$("symbolChips");wrap.innerHTML="";
- const list=["RELIANCE.NS","TCS.NS","INFY.NS","HDFCBANK.NS","ICICIBANK.NS","SBIN.NS","BHARTIARTL.NS","ITC.NS","LT.NS","HINDUNILVR.NS","KOTAKBANK.NS","AXISBANK.NS","MARUTI.NS","SUNPHARMA.NS","TATAMOTORS.NS","AAPL","MSFT","GOOGL","AMZN","NVDA","TSLA","META","NFLX","AMD","BTC-USD","ETH-USD","GC=F","XAUUSD=X"];
+ const list=["RELIANCE.NS","TCS.NS","INFY.NS","HDFCBANK.NS","ICICIBANK.NS","SBIN.NS","BHARTIARTL.NS","ITC.NS","LT.NS","HINDUNILVR.NS","KOTAKBANK.NS","AXISBANK.NS","MARUTI.NS","SUNPHARMA.NS","TATAMOTORS.NS","IDEA.NS","AAPL","MSFT","GOOGL","AMZN","NVDA","TSLA","META","NFLX","AMD","BTC-USD","ETH-USD","GC=F","XAUUSD=X"];
  list.forEach(s=>{const b=document.createElement("button");b.className="chip";b.textContent=s;b.onclick=()=>{$("symbolInput").value=s;loadMarket();};wrap.appendChild(b);});
 }
 window.addEventListener("resize",()=>{if(rows.length)render();});
