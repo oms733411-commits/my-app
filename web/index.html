@@ -33,10 +33,9 @@
 <section class="grid">
 <div class="card chart-card">
  <div class="card-head"><div><span class="label">PRICE FORECAST</span><h2 id="symbol">RELIANCE.NS • 1D</h2></div>
- <div class="controls"><select id="horizon"><option value="5">5 sessions</option><option value="10">10 sessions</option><option value="20">20 sessions</option><option value="30">30 sessions</option></select>
- <select id="range"><option value="30">1M</option><option value="90">3M</option><option value="180">6M</option><option value="365" selected>1Y</option><option value="240">Max loaded</option></select></div></div>
- <canvas id="chart"></canvas>
- <div class="legend"><span><i class="actual"></i>Actual</span><span><i class="forecast"></i>Kronos forecast</span></div>
+ <div class="controls"><select id="chartType" aria-label="Chart type"><option value="candles" selected>Candles</option><option value="line">Line</option><option value="area">Area</option></select><select id="range" aria-label="Chart range"><option value="5">1W</option><option value="22">1M</option><option value="66">3M</option><option value="132">6M</option><option value="252" selected>1Y</option><option value="400">Max</option></select><select id="horizon" aria-label="Forecast horizon"><option value="5">5 sessions</option><option value="10">10 sessions</option><option value="20">20 sessions</option><option value="30">30 sessions</option></select></div></div>
+ <div class="chart-wrap"><canvas id="chart"></canvas><div id="chartTip" class="chart-tip hidden"></div></div>
+ <div class="chart-footer"><div class="legend"><span><i class="actual"></i>Actual</span><span><i class="forecast"></i>Kronos forecast</span><span><i class="live"></i>Live</span></div><span id="chartHint">Hover a candle/point for date + OHLC</span></div>
 </div>
 <aside class="side">
  <div class="card signal"><span class="label">MODEL SIGNAL</span><div class="signal-row"><strong id="direction">—</strong><span id="confidence">Awaiting data</span></div><p id="signalText">Select a market to load the latest model result.</p><div class="risk-note">Forecasts are model outputs, not guaranteed returns.</div></div>
