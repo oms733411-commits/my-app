@@ -31,33 +31,38 @@ jobs:
           mkdir kronos-build
           unzip -q kronos-ai.zip -d kronos-build
 
-          echo "Extracted project:"
-          find kronos-build -maxdepth 3 -type f | sort | head -200
+          PROJECT_DIR="kronos-build"
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
 
-          GRADLEW=$(find kronos-build -type f -name gradlew | head -1)
-          if [ -z "$GRADLEW" ]; then
-            echo "ERROR: gradlew not found inside kronos-ai.zip"
+          test -f "$PROJECT_DIR/settings.gradle.kts"
+          test -f "$PROJECT_DIR/app/build.gradle.kts"
+
+          echo "Android project detected:"
+          find "$PROJECT_DIR" -maxdepth 3 -type f | sort | head -200
+
+      - name: Generate Gradle wrapper
+        working-directory: ${{ env.PROJECT_DIR }}
+        shell: bash
+        run: |
+          set -e
+          if command -v gradle >/dev/null 2>&1; then
+            gradle wrapper --gradle-version 8.13
+          else
+            echo "ERROR: system Gradle is not available on this GitHub runner"
             exit 1
           fi
-
-          PROJECT_DIR=$(dirname "$GRADLEW")
-          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
-          chmod +x "$GRADLEW"
-
-          echo "Using Android project: $PROJECT_DIR"
+          chmod +x ./gradlew
+          ./gradlew --version
 
       - name: Configure Android SDK
         shell: bash
         run: |
           set -e
-
           SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
           if [ -z "$SDK_ROOT" ]; then
             echo "ERROR: Android SDK path not available on runner"
             exit 1
           fi
-
-          echo "Android SDK: $SDK_ROOT"
 
           SDKMANAGER=""
           if command -v sdkmanager >/dev/null 2>&1; then
@@ -70,14 +75,10 @@ jobs:
 
           if [ -z "$SDKMANAGER" ]; then
             echo "ERROR: sdkmanager not found"
-            find "$SDK_ROOT" -maxdepth 4 -type f -name sdkmanager -print || true
             exit 1
           fi
 
-          export PATH="$(dirname "$SDKMANAGER"):$PATH"
           yes | "$SDKMANAGER" --licenses >/dev/null 2>&1 || true
-
-          # AI Studio Android projects commonly target API 35.
           "$SDKMANAGER" "platform-tools" "platforms;android-35" "build-tools;35.0.0"
 
       - name: Build Kronos AI Debug APK
@@ -87,12 +88,6 @@ jobs:
         shell: bash
         run: |
           set -e
-          chmod +x ./gradlew
-
-          echo "Gradle:"
-          ./gradlew --version
-
-          echo "Building APK..."
           ./gradlew assembleDebug --stacktrace
 
       - name: Show APK
