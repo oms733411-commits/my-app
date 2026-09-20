@@ -1,5 +1,5 @@
 name: Build Kronos APK
-# Cloud build: use Gradle 9.3.1 to match the exported project requirements.
+# Cloud build: use Gradle 9.3.1 and create the exported project's debug keystore.
 
 on:
   workflow_dispatch:
@@ -81,6 +81,17 @@ jobs:
 
           yes | "$SDKMANAGER" --licenses >/dev/null 2>&1 || true
           "$SDKMANAGER" "platform-tools" "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Create debug signing keystore
+        working-directory: ${{ env.PROJECT_DIR }}
+        shell: bash
+        run: |
+          set -e
+          if [ ! -f debug.keystore ]; then
+            keytool -genkeypair -v               -keystore debug.keystore               -storepass android               -alias androiddebugkey               -keypass android               -keyalg RSA               -keysize 2048               -validity 10000               -dname "CN=Android Debug,O=Android,C=US"
+          fi
+          test -f debug.keystore
+          keytool -list -keystore debug.keystore -storepass android -alias androiddebugkey
 
       - name: Build Kronos AI Debug APK
         working-directory: ${{ env.PROJECT_DIR }}
