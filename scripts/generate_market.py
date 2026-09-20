@@ -101,7 +101,7 @@ def main():
         try:
             df=load_symbol(symbol)
             if df is None or len(df)<LOOKBACK: continue
-            item={"symbol":symbol,"last_date":str(df["date"].iloc[-1].date()),"last_close":float(df["close"].iloc[-1]),"history":[{"date":str(d.date()),"close":float(c)} for d,c in zip(df["date"].tail(240),df["close"].tail(240))],"forecast":{}}
+            item={"symbol":symbol,"last_date":str(df["date"].iloc[-1].date()),"last_close":float(df["close"].iloc[-1]),"history":[{"date":str(row["date"].date()),"open":float(row["open"]),"high":float(row["high"]),"low":float(row["low"]),"close":float(row["close"]),"volume":float(row["volume"])} for _,row in df.tail(400).iterrows()],"forecast":{}}
             for h in HORIZONS:
                 item["forecast"][str(h)]=predict_one(predictor,df,h,symbol)
             item["backtest"]=rolling_backtest(predictor,df,5,3)
