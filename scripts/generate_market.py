@@ -1,4 +1,4 @@
-import json, os, time
+import json, os, time, sys
 from pathlib import Path
 import numpy as np
 import pandas as pd
@@ -7,6 +7,7 @@ import yfinance as yf
 from model import Kronos, KronosTokenizer, KronosPredictor
 
 ROOT=Path(__file__).resolve().parents[1]
+sys.path.insert(0,"/tmp/Kronos")
 OUT=ROOT/"web"/"data"/"market.json"
 SYMBOLS=[
  "RELIANCE.NS","TCS.NS","INFY.NS","HDFCBANK.NS","ICICIBANK.NS",
