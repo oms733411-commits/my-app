@@ -4,10 +4,13 @@ import numpy as np
 import pandas as pd
 import torch
 import yfinance as yf
+
+# Upstream Kronos is cloned by CI into /tmp/Kronos.
+# Add it to sys.path BEFORE importing its model package.
+sys.path.insert(0, "/tmp/Kronos")
 from model import Kronos, KronosTokenizer, KronosPredictor
 
 ROOT=Path(__file__).resolve().parents[1]
-sys.path.insert(0,"/tmp/Kronos")
 OUT=ROOT/"web"/"data"/"market.json"
 SYMBOLS=[
  "RELIANCE.NS","TCS.NS","INFY.NS","HDFCBANK.NS","ICICIBANK.NS",
@@ -37,8 +40,7 @@ def load_symbol(symbol):
     need=["open","high","low","close","volume"]
     if not all(c in raw.columns for c in need): return None
     raw=raw[need].dropna().reset_index()
-    date_col="date" if "Date" not in raw.columns else "Date"
-    if date_col=="Date": raw=raw.rename(columns={"Date":"date"})
+    if "Date" in raw.columns: raw=raw.rename(columns={"Date":"date"})
     raw["date"]=pd.to_datetime(raw["date"]).dt.tz_localize(None)
     return raw
 
