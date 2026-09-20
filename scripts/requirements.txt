@@ -1,0 +1,6 @@
+torch
+pandas
+numpy
+yfinance
+huggingface_hub
+tqdm
