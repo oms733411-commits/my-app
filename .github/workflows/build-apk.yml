@@ -15,7 +15,7 @@ jobs:
 
     steps:
 
-      # 1. Download repository
+      # 1. Checkout repository
       - name: Checkout repository
         uses: actions/checkout@v4
 
@@ -26,21 +26,33 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      # 3. Android SDK
+      # 3. Setup Android command-line tools
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
-        with:
-          packages: |
-            platform-tools
-            platforms;android-35
-            build-tools;35.0.0
 
-      # 4. Show project structure
+      # 4. Install required Android SDK packages
+      - name: Install Android SDK packages
+        shell: bash
+        run: |
+          set -e
+
+          echo "Installing Android SDK packages..."
+
+          yes | sdkmanager --licenses > /dev/null || true
+
+          sdkmanager \
+            "platform-tools" \
+            "platforms;android-35" \
+            "build-tools;35.0.0"
+
+          echo "Android SDK packages installed successfully."
+
+      # 5. Inspect repository
       - name: Inspect project
         shell: bash
         run: |
           echo "======================================"
-          echo "PROJECT ROOT"
+          echo "CURRENT DIRECTORY"
           echo "======================================"
           pwd
 
@@ -48,7 +60,10 @@ jobs:
           echo "======================================"
           echo "ROOT FILES"
           echo "======================================"
-          find . -maxdepth 2 -type f | sort | head -200
+          find . -maxdepth 2 -type f \
+            -not -path "./.git/*" \
+            | sort \
+            | head -300
 
           echo ""
           echo "======================================"
@@ -61,23 +76,32 @@ jobs:
             -o -name "settings.gradle.kts" \
             -o -name "build.gradle" \
             -o -name "build.gradle.kts" \) \
+            -not -path "./.git/*" \
             -print | sort
 
-      # 5. Find Gradle wrapper automatically
+      # 6. Find Gradle wrapper
       - name: Locate Gradle wrapper
         id: find_gradle
         shell: bash
         run: |
           set -e
 
-          GRADLEW=$(find . -type f -name "gradlew" -not -path "./.git/*" | head -1)
+          GRADLEW=$(find . \
+            -type f \
+            -name "gradlew" \
+            -not -path "./.git/*" \
+            | head -1)
 
           if [ -z "$GRADLEW" ]; then
             echo ""
-            echo "ERROR: gradlew was not found anywhere in the repository."
+            echo "======================================"
+            echo "ERROR: GRADLE WRAPPER NOT FOUND"
+            echo "======================================"
+
             echo ""
             echo "Gradle-related files found:"
-            find . -type f \
+            find . \
+              -type f \
               \( -name "settings.gradle" \
               -o -name "settings.gradle.kts" \
               -o -name "build.gradle" \
@@ -90,12 +114,16 @@ jobs:
 
           GRADLE_DIR=$(dirname "$GRADLEW")
 
-          echo "Gradle wrapper found:"
-          echo "$GRADLEW"
+          echo ""
+          echo "======================================"
+          echo "GRADLE WRAPPER FOUND"
+          echo "======================================"
+          echo "Wrapper: $GRADLEW"
+          echo "Directory: $GRADLE_DIR"
 
           echo "gradle_dir=$GRADLE_DIR" >> "$GITHUB_OUTPUT"
 
-      # 6. Make wrapper executable
+      # 7. Make Gradle executable
       - name: Make Gradle executable
         shell: bash
         run: |
@@ -103,12 +131,11 @@ jobs:
 
           GRADLE_DIR="${{ steps.find_gradle.outputs.gradle_dir }}"
 
-          echo "Using Gradle directory:"
-          echo "$GRADLE_DIR"
-
           chmod +x "$GRADLE_DIR/gradlew"
 
-      # 7. Check Gradle
+          echo "Gradle wrapper is executable."
+
+      # 8. Check Gradle
       - name: Check Gradle
         shell: bash
         run: |
@@ -118,14 +145,13 @@ jobs:
 
           cd "$GRADLE_DIR"
 
-          echo "Gradle directory:"
-          pwd
+          echo "======================================"
+          echo "GRADLE VERSION"
+          echo "======================================"
 
-          echo ""
-          echo "Gradle version:"
           ./gradlew --version
 
-      # 8. Build Debug APK
+      # 9. Build APK
       - name: Build Debug APK
         shell: bash
         env:
@@ -143,7 +169,7 @@ jobs:
 
           ./gradlew assembleDebug --stacktrace --info
 
-      # 9. Search for APK even if build fails
+      # 10. Find generated APK
       - name: Find APK
         if: always()
         shell: bash
@@ -152,11 +178,13 @@ jobs:
           echo "SEARCHING FOR APK"
           echo "======================================"
 
-          find . -type f -name "*.apk" \
+          find . \
+            -type f \
+            -name "*.apk" \
             -not -path "./.git/*" \
             -print
 
-      # 10. Upload APK
+      # 11. Upload APK
       - name: Upload APK
         if: success()
         uses: actions/upload-artifact@v4
