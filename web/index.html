@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#07090d"><title>Kronos AI — Market Intelligence</title>
+<link rel="manifest" href="manifest.json"><link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="app-shell">
+<header class="topbar"><div class="brand"><div class="brand-mark">K</div><div><b>KRONOS</b><span>AI MARKET INTELLIGENCE</span></div></div><div class="status"><i></i> LOCAL ENGINE READY</div></header>
+<main>
+<section class="hero"><div><p class="eyebrow">FORECAST • BACKTEST • ANALYZE</p><h1>See the market<br><em>before the move.</em></h1><p class="sub">A clean workspace for Kronos forecasting, market data, CSV analysis and model-vs-baseline backtesting.</p></div>
+<div class="hero-actions"><button class="primary" onclick="document.getElementById('csv').click()">Upload OHLCV</button><button class="ghost" onclick="loadDemo()">Load Demo</button></div></section>
+<section class="grid">
+<div class="card chart-card"><div class="card-head"><div><span class="label">PRICE FORECAST</span><h2 id="symbol">RELIANCE • 1D</h2></div><select id="horizon"><option>5 sessions</option><option>10 sessions</option><option>20 sessions</option><option>30 sessions</option></select></div><canvas id="chart"></canvas><div class="legend"><span><i class="actual"></i>Actual</span><span><i class="forecast"></i>Kronos forecast</span><span><i class="baseline"></i>Baseline</span></div></div>
+<aside class="side">
+<div class="card signal"><span class="label">MODEL SIGNAL</span><div class="signal-row"><strong id="direction">—</strong><span id="confidence">Awaiting data</span></div><p id="signalText">Upload an OHLCV CSV to generate a forecast.</p></div>
+<div class="card metrics"><span class="label">MODEL SNAPSHOT</span><div class="metric"><span>Last close</span><b id="last">—</b></div><div class="metric"><span>Forecast end</span><b id="end">—</b></div><div class="metric"><span>Horizon</span><b id="horizonOut">5 sessions</b></div></div>
+</aside>
+</section>
+<section class="lower">
+<div class="card upload"><span class="label">DATA INPUT</span><h2>Bring your own market data.</h2><p>CSV with timestamp, open, high, low, close and volume. Screenshots can be attached for visual context.</p><div class="drop" id="drop" onclick="document.getElementById('csv').click()"><div class="upload-icon">↑</div><b>Drop CSV here</b><span>or click to browse</span></div><input id="csv" type="file" accept=".csv,text/csv" hidden><label class="screenshot">Add chart screenshot <input id="shot" type="file" accept="image/*"></label></div>
+<div class="card backtest"><div class="card-head"><div><span class="label">BACKTEST</span><h2>Kronos vs baseline</h2></div><span class="pill">Rolling windows</span></div><div class="bars"><div><span>MAE</span><div class="bar"><i id="maeBar"></i></div><b id="mae">—</b></div><div><span>RMSE</span><div class="bar"><i id="rmseBar"></i></div><b id="rmse">—</b></div><div><span>Direction</span><div class="bar"><i id="dirBar"></i></div><b id="dir">—</b></div></div><p class="muted">Backtest uses the uploaded history. Model metrics shown here are computed locally from available forecast/baseline outputs.</p></div>
+</section>
+</main>
+<footer>KRONOS AI <span>•</span> Private browser workspace • No account required</footer>
+</div>
+<script src="app.js"></script>
+</body></html>
