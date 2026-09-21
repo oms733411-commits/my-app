@@ -1,6 +1,9 @@
 name: Update Kronos Market Intelligence
 
 on:
+  push:
+    paths:
+      - ".github/workflows/update-market.yml"
   schedule:
     - cron: "7/10 * * * *"
   workflow_dispatch:
