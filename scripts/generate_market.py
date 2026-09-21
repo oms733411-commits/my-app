@@ -49,20 +49,30 @@ def future_dates(last, n, symbol):
 
 def load_yahoo_chart(symbol, interval, range_):
     import requests
-    url="https://query1.finance.yahoo.com/v8/finance/chart/"+symbol
-    params={"interval":interval,"range":range_,"includePrePost":"false","events":"div,splits"}
-    r=requests.get(url,params=params,headers={"User-Agent":"Mozilla/5.0"},timeout=30)
-    r.raise_for_status()
-    result=r.json().get("chart",{}).get("result") or []
-    if not result: return None
-    res=result[0]; ts=res.get("timestamp") or []
-    q=(res.get("indicators",{}).get("quote") or [{}])[0]
-    rows=[]
-    for i,t in enumerate(ts):
-        vals=[q.get(k,[None]*len(ts))[i] for k in ("open","high","low","close")]
-        vol=(q.get("volume") or [0]*len(ts))[i] or 0
-        if all(v is not None for v in vals): rows.append((pd.to_datetime(t,unit="s",utc=True).tz_localize(None),*map(float,vals),float(vol)))
-    return pd.DataFrame(rows,columns=["date","open","high","low","close","volume"]) if rows else None
+    last_error=None
+    for host in ("query1.finance.yahoo.com","query2.finance.yahoo.com"):
+        try:
+            url="https://"+host+"/v8/finance/chart/"+symbol
+            params={"interval":interval,"range":range_,"includePrePost":"false","events":"div,splits"}
+            r=requests.get(url,params=params,headers={"User-Agent":"Mozilla/5.0 (compatible; KronosAI/1.0)"},timeout=20)
+            r.raise_for_status()
+            result=r.json().get("chart",{}).get("result") or []
+            if not result: continue
+            res=result[0]; ts=res.get("timestamp") or []
+            q=(res.get("indicators",{}).get("quote") or [{}])[0]
+            rows=[]
+            for i,t in enumerate(ts):
+                vals=[q.get(k,[None]*len(ts))[i] for k in ("open","high","low","close")]
+                vol=(q.get("volume") or [0]*len(ts))[i] or 0
+                if all(v is not None for v in vals):
+                    rows.append((pd.to_datetime(t,unit="s",utc=True).tz_localize(None),*map(float,vals),float(vol)))
+            if rows:
+                print("Yahoo chart fallback OK",symbol,interval,range_,len(rows),host)
+                return pd.DataFrame(rows,columns=["date","open","high","low","close","volume"])
+        except Exception as e:
+            last_error=e
+            print("Yahoo chart fallback failed",symbol,interval,range_,host,repr(e))
+    return None
 
 def flatten_yf_frame(raw, symbol):
     if raw is None or raw.empty: return None
@@ -83,9 +93,10 @@ def load_symbol(symbol):
         raw=flatten_yf_frame(raw,symbol)
     except Exception as e:
         print("yfinance daily failed",symbol,repr(e)); raw=None
-    if raw is None or raw.empty: raw=load_yahoo_chart(symbol,"1d","2y")
-    if raw is None or raw.empty: raw=load_yahoo_chart(symbol,interval,period)
-    if raw is None or raw.empty: return None
+    if raw is None or raw.empty:
+        raw=load_yahoo_chart(symbol,"1d","2y")
+    if raw is None or raw.empty:
+        return None
     need=["open","high","low","close","volume"]
     if not all(c in raw.columns for c in need): return None
     raw=raw[need].dropna().reset_index()
@@ -150,6 +161,8 @@ def load_intraday(symbol, interval, period):
         raw=flatten_yf_frame(raw,symbol)
     except Exception as e:
         print("yfinance intraday failed",symbol,interval,repr(e)); raw=None
+    if raw is None or raw.empty:
+        raw=load_yahoo_chart(symbol,interval,period)
     if raw is None or raw.empty: return None
     need=["open","high","low","close","volume"]
     if not all(c in raw.columns for c in need): return None
