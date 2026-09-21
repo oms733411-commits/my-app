@@ -15,21 +15,7 @@ OUT=ROOT/"web"/"data"/"market.json"
 # This is intentionally curated rather than literally every listed security,
 # because free CI inference time is finite. CSV remains available for any custom ticker.
 SYMBOLS=[
- # India / NSE
- "RELIANCE.NS","TCS.NS","INFY.NS","HDFCBANK.NS","ICICIBANK.NS","SBIN.NS",
- "BHARTIARTL.NS","ITC.NS","LT.NS","HINDUNILVR.NS","KOTAKBANK.NS","AXISBANK.NS",
- "MARUTI.NS","SUNPHARMA.NS","TATAMOTORS.NS","M&M.NS","BAJFINANCE.NS",
- "HCLTECH.NS","WIPRO.NS","ADANIENT.NS","ADANIPORTS.NS","NTPC.NS","POWERGRID.NS",
- "ONGC.NS","COALINDIA.NS","TATASTEEL.NS","JSWSTEEL.NS","TECHM.NS","ULTRACEMCO.NS",
- "ASIANPAINT.NS","NESTLEIND.NS","TITAN.NS","BAJAJFINSV.NS","DRREDDY.NS",
- "CIPLA.NS","EICHERMOT.NS","HEROMOTOCO.NS","APOLLOHOSP.NS","DIVISLAB.NS",
- "BRITANNIA.NS","GRASIM.NS","HINDALCO.NS","INDUSINDBK.NS","TATACONSUM.NS",
- "BEL.NS","TRENT.NS","BPCL.NS","SHRIRAMFIN.NS","BAJAJ-AUTO.NS","IDEA.NS",
- # US
- "AAPL","MSFT","GOOGL","AMZN","NVDA","TSLA","META","NFLX","AMD","AVGO",
- "JPM","V","MA","WMT","COST","ORCL","CRM","ADBE","INTC","QCOM",
- # Crypto / commodities / gold
- "BTC-USD","ETH-USD","GC=F","XAUUSD=X"
+    "RELIANCE.NS","IDEA.NS","BTC-USD","XAUUSD=X","INFY.NS"
 ]
 
 HORIZONS=[5,10,20,30]
@@ -61,12 +47,23 @@ def future_dates(last, n, symbol):
         d+=pd.Timedelta(days=1)
     return pd.Series(dates)
 
-def load_symbol(symbol):
-    raw=yf.download(symbol,period="2y",interval="1d",auto_adjust=False,repair=True,progress=False,threads=False)
+def flatten_yf_frame(raw, symbol):
     if raw is None or raw.empty: return None
     if isinstance(raw.columns,pd.MultiIndex):
-        raw=raw.xs(symbol,axis=1,level=1,drop_level=True)
+        # yfinance may return either (field, ticker) or (ticker, field).
+        if symbol in raw.columns.get_level_values(-1):
+            raw=raw.xs(symbol,axis=1,level=-1,drop_level=True)
+        elif symbol in raw.columns.get_level_values(0):
+            raw=raw.xs(symbol,axis=1,level=0,drop_level=True)
+        else:
+            raw.columns=[str(c[-1] if isinstance(c,tuple) else c) for c in raw.columns]
     raw=raw.rename(columns={c:str(c).lower() for c in raw.columns})
+    return raw
+
+def load_symbol(symbol):
+    raw=yf.download(symbol,period="2y",interval="1d",auto_adjust=False,repair=True,progress=False,threads=False)
+    raw=flatten_yf_frame(raw,symbol)
+    if raw is None or raw.empty: return None
     need=["open","high","low","close","volume"]
     if not all(c in raw.columns for c in need): return None
     raw=raw[need].dropna().reset_index()
@@ -126,11 +123,9 @@ def intraday_future_dates(last, interval, n, symbol):
     return pd.Series(out[:n])
 
 def load_intraday(symbol, interval, period):
-    raw=yf.download(symbol,period=period,interval=interval,auto_adjust=False,progress=False,threads=False)
+    raw=yf.download(symbol,period=period,interval=interval,auto_adjust=False,repair=True,progress=False,threads=False)
+    raw=flatten_yf_frame(raw,symbol)
     if raw is None or raw.empty: return None
-    if isinstance(raw.columns,pd.MultiIndex):
-        raw=raw.xs(symbol,axis=1,level=1,drop_level=True)
-    raw=raw.rename(columns={c:str(c).lower() for c in raw.columns})
     need=["open","high","low","close","volume"]
     if not all(c in raw.columns for c in need): return None
     raw=raw[need].dropna().reset_index()
