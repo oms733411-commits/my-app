@@ -39,8 +39,7 @@ LOOKBACK=400
 # 5m/15m/1h OHLCV candles. Keep the set curated so the free GitHub Actions
 # pipeline stays within its time budget.
 INTRADAY_SYMBOLS={
-    "RELIANCE.NS","TCS.NS","INFY.NS","HDFCBANK.NS","ICICIBANK.NS","SBIN.NS",
-    "RELIANCE.NS","TCS.NS","INFY.NS","AAPL","MSFT","BTC-USD"
+    "RELIANCE.NS","TCS.NS","INFY.NS","HDFCBANK.NS","ICICIBANK.NS","SBIN.NS","AAPL","MSFT","BTC-USD"
 }
 INTRADAY_CONFIG={
     "5m":{"period":"60d","pred_len":24,"history_bars":600},
@@ -63,7 +62,7 @@ def future_dates(last, n, symbol):
     return pd.Series(dates)
 
 def load_symbol(symbol):
-    raw=yf.download(symbol,period="2y",interval="1d",auto_adjust=False,progress=False,threads=False)
+    raw=yf.download(symbol,period="2y",interval="1d",auto_adjust=False,repair=True,progress=False,threads=False)
     if raw is None or raw.empty: return None
     if isinstance(raw.columns,pd.MultiIndex):
         raw=raw.xs(symbol,axis=1,level=1,drop_level=True)
