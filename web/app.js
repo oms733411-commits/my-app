@@ -66,7 +66,7 @@ async function fetchLiveQuote(symbol){
     });
   }
   const url="https://query1.finance.yahoo.com/v8/finance/chart/"+encodeURIComponent(symbol)+"?interval=1m&range=1d";
-  const r=await fetch(url,{cache:"no-store"});
+  const r=await fetchWithTimeout(url,{cache:"no-store"},9000);
   if(!r.ok)throw Error("live quote unavailable");
   const j=await r.json(),m=j.chart?.result?.[0]?.meta||{};
   const price=Number(m.regularMarketPrice ?? m.previousClose);
@@ -107,6 +107,18 @@ async function refreshLiveQuote(){
   }
 }
 
+async function fetchWithTimeout(url,options={},ms=10000){
+  const controller=new AbortController();
+  const timer=setTimeout(()=>controller.abort(),ms);
+  try{
+    const signal=options.signal;
+    if(signal){
+      if(signal.aborted)throw Error("aborted");
+      signal.addEventListener("abort",()=>controller.abort(),{once:true});
+    }
+    return await fetch(url,{...options,signal:controller.signal});
+  }finally{clearTimeout(timer);}
+}
 async function loadPayload(){
  const stamp=Date.now();
  const sources=[
