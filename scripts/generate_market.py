@@ -19,6 +19,7 @@ ROOT=Path(__file__).resolve().parents[1]
 OUT=ROOT/"web"/"data"/"market.json"
 
 # Broad liquid universe for the free scheduled pipeline.
+# Verified market-history path: Yahoo chart fallback + yfinance.
 # This is intentionally curated rather than literally every listed security,
 # because free CI inference time is finite. CSV remains available for any custom ticker.
 SYMBOLS=[
