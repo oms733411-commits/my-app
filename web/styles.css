@@ -29,3 +29,5 @@ button:disabled{opacity:.6;cursor:wait}
 .chart-wrap canvas{touch-action:none;user-select:none;-webkit-user-select:none}.chart-wrap{overflow:hidden}.chart-card{min-width:0}
 
 .timeframe-group{display:flex;gap:5px;padding:4px;border:1px solid #2b3544;border-radius:12px;background:#0b0f15}.tf-btn{border:0;border-radius:8px;padding:8px 10px;background:transparent;color:#7f8997;font:600 11px Inter,sans-serif;cursor:pointer}.tf-btn:hover{color:#eef2f7;background:#151b24}.tf-btn.active{background:#a9ff6b;color:#091008}.advanced-control{display:none!important}@media(max-width:720px){.timeframe-group{width:100%;justify-content:space-between}.tf-btn{flex:1;padding:9px 8px}}
+
+.backtest-chart-wrap{position:relative;margin-top:24px;border-top:1px solid #1b222d;padding-top:18px;overflow:hidden}.backtest-chart-wrap canvas{width:100%;height:260px;display:block}
