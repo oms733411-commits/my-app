@@ -549,16 +549,16 @@ function drawBacktestChart(points){
 }
 function renderBacktest(bt){
  if(!bt)return clearBacktest("No rolling backtest is available for this symbol yet.");
- $("mae").textContent=fmt(bt.mae);$("rmse").textContent=fmt(bt.rmse);$("dir").textContent=Math.round(bt.direction)+"%";
+ $("mae").textContent=fmt(bt.mae);$("rmse").textContent=fmt(bt.rmse);$("mape").textContent=Number.isFinite(bt.mape)?bt.mape.toFixed(2)+"%":"—";$("dir").textContent=Math.round(bt.direction)+"%";
  $("btWindows").textContent=bt.windows+" windows • "+bt.horizon+"D";
  $("dirBar").style.width=Math.min(100,Math.max(0,bt.direction))+"%";
  const last=rows.at(-1)?.close||1;
  $("maeBar").style.width=Math.min(100,Math.max(6,100/(1+bt.mae/last*20)))+"%";
- $("rmseBar").style.width=Math.min(100,Math.max(6,100/(1+bt.rmse/last*20)))+"%";
+ $("rmseBar").style.width=Math.min(100,Math.max(6,100/(1+bt.rmse/last*20)))+"%";$("mapeBar").style.width=Number.isFinite(bt.mape)?Math.min(100,Math.max(6,100/(1+bt.mape)))+"%":"0%";
  drawBacktestChart(bt.points);
  $("backtestNote").textContent="Out-of-sample rolling test: each prediction window uses only history available before that window. The graph shows the actual closes and Kronos predictions for those tested windows.";
 }
-function clearBacktest(note){["mae","rmse","dir"].forEach(id=>$(id).textContent="—");$("btWindows").textContent="—";$("maeBar").style.width="0%";$("rmseBar").style.width="0%";$("dirBar").style.width="0%";drawBacktestChart([]);$("backtestNote").textContent=note;}
+function clearBacktest(note){["mae","rmse","mape","dir"].forEach(id=>$(id).textContent="—");$("btWindows").textContent="—";$("maeBar").style.width="0%";$("rmseBar").style.width="0%";$("mapeBar").style.width="0%";$("dirBar").style.width="0%";drawBacktestChart([]);$("backtestNote").textContent=note;}
 
 function readCSV(file){
  if(!file)return;
