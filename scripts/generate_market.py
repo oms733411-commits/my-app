@@ -6,7 +6,11 @@ import torch
 import yfinance as yf
 
 sys.path.insert(0, "/tmp/Kronos")
-from model import Kronos, KronosTokenizer, KronosPredictor
+try:
+    from model import Kronos, KronosTokenizer, KronosPredictor
+except Exception as import_error:
+    Kronos = KronosTokenizer = KronosPredictor = None
+    print("Kronos import unavailable; market-history-only mode:",repr(import_error))
 
 ROOT=Path(__file__).resolve().parents[1]
 OUT=ROOT/"web"/"data"/"market.json"
@@ -252,6 +256,8 @@ def main():
     predictor=None
     model_status="unavailable"
     try:
+        if Kronos is None or KronosTokenizer is None or KronosPredictor is None:
+            raise RuntimeError("Kronos Python runtime could not be imported")
         tokenizer=KronosTokenizer.from_pretrained(TOKENIZER_ID)
         model=Kronos.from_pretrained(MODEL_ID)
         tokenizer.eval(); model.eval()
