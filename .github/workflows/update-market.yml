@@ -20,7 +20,7 @@ concurrency:
 jobs:
   generate:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -30,6 +30,10 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install -r scripts/requirements.txt
+          python -m pip install scipy
+          rm -rf /tmp/Kronos
+          git clone --depth 1 https://github.com/shiyu-coder/Kronos.git /tmp/Kronos
+          python -m pip install -r /tmp/Kronos/requirements.txt
       - name: Generate verified market history
         timeout-minutes: 15
         env:
