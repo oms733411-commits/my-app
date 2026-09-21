@@ -43,9 +43,9 @@ INTRADAY_SYMBOLS={
     "BHARTIARTL.NS","ITC.NS","LT.NS","AAPL","MSFT","NVDA","TSLA","BTC-USD","ETH-USD"
 }
 INTRADAY_CONFIG={
-    "5m":{"period":"60d","pred_len":24},
-    "15m":{"period":"60d","pred_len":16},
-    "1h":{"period":"730d","pred_len":12},
+    "5m":{"period":"60d","pred_len":24,"history_bars":600},
+    "15m":{"period":"60d","pred_len":16,"history_bars":600},
+    "1h":{"period":"730d","pred_len":12,"history_bars":600},
 }
 GROUP_INDEX=int(os.getenv("GROUP_INDEX","0"))
 GROUP_COUNT=max(1,int(os.getenv("GROUP_COUNT","1")))
@@ -183,6 +183,7 @@ def main():
                                 "generated_at":pd.Timestamp.utcnow().isoformat(),
                                 "bars":int(len(idf)),
                                 "last_date":str(idf["date"].iloc[-1].isoformat()),
+                                "history":[{"date":str(row["date"].isoformat()),"open":float(row["open"]),"high":float(row["high"]),"low":float(row["low"]),"close":float(row["close"]),"volume":float(row["volume"])} for _,row in idf.tail(cfg.get("history_bars",600)).iterrows()],
                                 "forecast":predict_intraday_one(predictor,idf,interval,cfg["pred_len"],symbol)
                             }
                             print("OK INTRADAY",symbol,interval)
