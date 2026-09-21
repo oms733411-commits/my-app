@@ -180,22 +180,30 @@ def intraday_future_dates(last, interval, n, symbol):
     is_india=symbol.endswith(".NS")
     if crypto:
         return pd.Series([last+step*i for i in range(1,n+1)])
-    # Approximate regular-session timestamps. This avoids asking Kronos to
-    # forecast through overnight/weekend gaps while keeping timestamps aligned.
-    start_hour,start_min,end_hour,end_min=(9,15,15,30) if is_india else (9,30,16,0)
+    # Forecast only inside the regular session. The first prediction starts
+    # exactly one interval after the latest actual candle, then skips overnight
+    # and weekend gaps without inventing candles outside the session.
+    if is_india:
+        start=pd.Timedelta(hours=9,minutes=15)
+        end=pd.Timedelta(hours=15,minutes=30)
+    else:
+        start=pd.Timedelta(hours=9,minutes=30)
+        end=pd.Timedelta(hours=16)
     out=[]
-    d=last.normalize()
     cur=last+step
     while len(out)<n:
+        day=cur.normalize()
         if cur.weekday()<5:
-            session_start=d+pd.Timedelta(hours=start_hour,minutes=start_min)
-            session_end=d+pd.Timedelta(hours=end_hour,minutes=end_min)
-            if cur<session_start: cur=session_start
-            while cur<=session_end and len(out)<n:
-                out.append(cur)
-                cur+=step
-        d=d+pd.Timedelta(days=1)
-        cur=d+pd.Timedelta(hours=start_hour,minutes=start_min)
+            session_start=day+start
+            session_end=day+end
+            if cur<session_start:
+                cur=session_start
+            if cur<=session_end:
+                while cur<=session_end and len(out)<n:
+                    out.append(cur)
+                    cur+=step
+                continue
+        cur=(day+pd.Timedelta(days=1))+start
     return pd.Series(out[:n])
 
 def load_intraday(symbol, interval, period):
