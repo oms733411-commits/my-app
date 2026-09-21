@@ -93,7 +93,9 @@ async function loadPayload(){
  if(!r.ok)throw Error("market dataset unavailable");
  return await r.json();
 }
+let chartLoadToken=0;
 async function loadChartMode(){
+  const token=++chartLoadToken;
   const mode=$("interval")?.value||"1d";
   if(mode==="1d"){
     chartState.intraday=false;
@@ -104,10 +106,15 @@ async function loadChartMode(){
   const range=$("intradayRange")?.value||"1d";
   setStatus("LOADING "+mode.toUpperCase()+" INTRADAY");
   try{
-    const intraday=await fetchIntraday(activeSymbol,mode,range);
-    if(!intraday.length)throw Error("No intraday data");
+    const allIntraday=await fetchIntraday(activeSymbol,mode,range);
+    if(token!==chartLoadToken)return;
+    if(!allIntraday.length)throw Error("No intraday data");
+    const barsPerDay={"5m":78,"15m":26,"1h":7};
+    const requestedDays=range==="1d"?1:range==="5d"?5:22;
+    const intraday=allIntraday.slice(-(barsPerDay[mode]||78)*requestedDays);
     chartState.intraday=true;
     const intradayPack=autoPayload?.symbols?.[activeSymbol]?.intraday?.[mode];
+    if(token!==chartLoadToken)return;
     const pred=normalizeForecast(intradayPack?.forecast||[]);
     if(!pred.length){
       throw Error("Kronos "+mode+" forecast is not available yet for "+activeSymbol+". Run market update first.");
@@ -141,6 +148,7 @@ async function loadChartMode(){
     clearBacktest("Intraday mode uses the latest intraday feed. Daily rolling backtest metrics are shown only in daily mode.");
     setStatus(pred.length?"INTRADAY + KRONOS READY":"INTRADAY READY",true);
   }catch(e){
+    if(token!==chartLoadToken)return;
     console.error("Intraday load failed",e);
     chartState.intraday=false;
     setStatus("INTRADAY ERROR • "+(e?.message||"FEED UNAVAILABLE"),false);
@@ -346,6 +354,11 @@ function chartHover(e){
 function chartWheel(e){
   e.preventDefault();
   if(!chartState.hist.length)return;
+  if(chartState.intraday){
+    const current=$("intradayRange").value||"1d",opts=["1d","5d","1mo"];
+    const pos=Math.max(0,opts.indexOf(current)),next=e.deltaY<0?Math.min(opts.length-1,pos+1):Math.max(0,pos-1);
+    $("intradayRange").value=opts[next];loadChartMode();return;
+  }
   const current=Number($("range").value||252),opts=[5,22,66,132,252,400];
   const pos=Math.max(0,opts.indexOf(current)),next=e.deltaY<0?Math.min(opts.length-1,pos+1):Math.max(0,pos-1);
   $("range").value=String(opts[next]);render();
