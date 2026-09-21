@@ -363,7 +363,18 @@ function render(){
  $("dataMode").textContent=dataSource==="AUTO"?"Automatic":"Custom CSV";
  $("dataSource").textContent=dataSource==="AUTO"?"Latest generated OHLCV dataset.":"User-selected file; it remains local to this browser.";
  if(dataSource==="AUTO"&&item){
-   const pred=item.forecast[String(n)]||[],end=pred.at(-1)?.close||last;
+   const pred=item.forecast?.[String(n)]||[];
+   if(!pred.length){
+     $("direction").textContent="—";$("directionMini").textContent="LIVE";
+     $("confidence").textContent="Kronos forecast unavailable";
+     $("confidenceMini").textContent="Market data ready";
+     $("forecastMini").textContent="—";$("forecastPct").textContent="—";$("end").textContent="—";
+     $("signalText").textContent="Verified market OHLCV is loaded. Kronos forecast is temporarily unavailable; no forecast values are being invented.";
+     draw(hist,[]);
+     renderBacktest(null);
+     return;
+   }
+   const end=pred.at(-1)?.close||last;
    const pct=(end/last-1)*100,dir=pct>=0?"UP":"DOWN";
    $("direction").textContent=dir;$("directionMini").textContent=dir;
    $("direction").style.color=dir==="UP"?"#a9ff6b":"#ff8f8f";$("directionMini").style.color=dir==="UP"?"#a9ff6b":"#ff8f8f";
