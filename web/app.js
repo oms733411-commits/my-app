@@ -186,9 +186,8 @@ async function loadChartMode(){
     const intradayPack=autoPayload?.symbols?.[symbolAtStart]?.intraday?.[mode];
     if(token!==chartLoadToken)return;
     const pred=normalizeForecast(intradayPack?.forecast||[]);
-    if(!pred.length){
-      throw Error("Kronos "+mode+" forecast is not available yet for "+activeSymbol+". Run market update first.");
-    }
+    // The chart must remain usable even while the scheduled Kronos dataset is regenerating.
+    // Show the latest real intraday candles first; add Kronos as soon as its generated forecast arrives.
     const last=intraday.at(-1).close;
     const end=pred.at(-1)?.close;
     const pct=Number.isFinite(end)&&Number.isFinite(last)?(end/last-1)*100:null;
@@ -205,18 +204,18 @@ async function loadChartMode(){
       : "Free intraday feed";
     $("horizonOut").textContent=pred.length?pred.length+" "+mode+" bars":"—";
     $("forecastMini").textContent=Number.isFinite(end)?fmt(end):"—";
-    $("forecastPct").textContent=Number.isFinite(pct)?(pct>=0?"+":"")+pct.toFixed(2)+"% projected":"Kronos forecast unavailable";
+    $("forecastPct").textContent=Number.isFinite(pct)?(pct>=0?"+":"")+pct.toFixed(2)+"% projected":"Preparing…";
     $("end").textContent=Number.isFinite(end)?fmt(end):"—";
     $("signalText").textContent=pred.length
       ? "Original Kronos-small intraday forecast from the latest generated OHLCV context. Live candles are fetched separately."
-      : "Intraday candles are live/latest available market data. This ticker does not yet have a generated Kronos intraday forecast.";
+      : "Live/latest intraday candles are shown now. The scheduled original Kronos forecast will appear automatically when the next market dataset is published.";
     $("confidence").textContent=pred.length?"Kronos intraday model":"Intraday view";
     $("confidenceMini").textContent=pred.length?(pct>=0?"+":"")+pct.toFixed(2)+"% projected":mode.toUpperCase()+" candles";
     $("direction").textContent=dir; $("directionMini").textContent=dir;
     $("direction").style.color=dir==="UP"?"#a9ff6b":dir==="DOWN"?"#ff8f8f":"";
     $("directionMini").style.color=dir==="UP"?"#a9ff6b":dir==="DOWN"?"#ff8f8f":"";
     clearBacktest("Intraday mode uses the latest intraday feed. Daily rolling backtest metrics are shown only in daily mode.");
-    setStatus(pred.length?"INTRADAY + KRONOS READY":"INTRADAY READY",true);
+    setStatus(pred.length?"INTRADAY + KRONOS READY":"INTRADAY READY • KRONOS UPDATING",true);
   }catch(e){
     if(token!==chartLoadToken)return;
     console.error("Intraday load failed",e);
@@ -244,6 +243,16 @@ async function fetchIntraday(symbol,interval,range,signal){
   const url="https://query1.finance.yahoo.com/v8/finance/chart/"+encodeURIComponent(symbol)+"?interval="+encodeURIComponent(interval)+"&range="+encodeURIComponent(range);
   const r=await fetch(url,{cache:"no-store",signal}); if(!r.ok)throw Error("intraday unavailable");
   const j=await r.json(),res=j.chart?.result?.[0]; if(!res)throw Error("no intraday result");
+  const q=res.indicators?.quote?.[0]||{},ts=res.timestamp||[];
+  return ts.map((t,i)=>({date:new Date(t*1000).toISOString(),open:+q.open?.[i],high:+q.high?.[i],low:+q.low?.[i],close:+q.close?.[i],volume:+q.volume?.[i]||0}))
+    .filter(v=>v.date&&[v.open,v.high,v.low,v.close].every(Number.isFinite));
+}
+async function fetchDailyFallback(symbol){
+  const url="https://query1.finance.yahoo.com/v8/finance/chart/"+encodeURIComponent(symbol)+"?interval=1d&range=2y";
+  const r=await fetch(url,{cache:"no-store"});
+  if(!r.ok)throw Error("daily market feed unavailable");
+  const j=await r.json(),res=j.chart?.result?.[0];
+  if(!res)throw Error("no daily market result");
   const q=res.indicators?.quote?.[0]||{},ts=res.timestamp||[];
   return ts.map((t,i)=>({date:new Date(t*1000).toISOString(),open:+q.open?.[i],high:+q.high?.[i],low:+q.low?.[i],close:+q.close?.[i],volume:+q.volume?.[i]||0}))
     .filter(v=>v.date&&[v.open,v.high,v.low,v.close].every(Number.isFinite));
@@ -315,8 +324,8 @@ function render(){
    draw(hist,pred);
    renderBacktest(item.backtest);
  }else{
-   $("direction").textContent="—";$("directionMini").textContent="CUSTOM";
-   $("confidence").textContent="Kronos runtime not in browser";
+   $("direction").textContent="—";$("directionMini").textContent=dataSource==="AUTO"?"UPDATING":"CUSTOM";
+   $("confidence").textContent=dataSource==="AUTO"?"Kronos dataset updating":"Kronos runtime not in browser";
    $("forecastMini").textContent="—";$("forecastPct").textContent="Custom data loaded";
    $("end").textContent="—";
    $("signalText").textContent="Custom CSV is loaded locally. Automatic Kronos forecasts use the generated market universe; custom CSV inference requires a model runtime.";
