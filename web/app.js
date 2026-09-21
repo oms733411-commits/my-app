@@ -128,7 +128,7 @@ async function loadPayload(){
  let lastError=null;
  for(const url of sources){
    try{
-     const r=await fetch(url,{cache:"no-store"});
+     const r=await fetchWithTimeout(url,{cache:"no-store"},9000);
      if(!r.ok)throw Error("HTTP "+r.status);
      const data=await r.json();
      if(data?.symbols && typeof data.symbols==="object")return data;
