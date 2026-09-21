@@ -13,7 +13,7 @@ permissions:
 
 concurrency:
   group: kronos-market-update
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   generate:

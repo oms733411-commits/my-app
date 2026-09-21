@@ -47,6 +47,23 @@ def future_dates(last, n, symbol):
         d+=pd.Timedelta(days=1)
     return pd.Series(dates)
 
+def load_yahoo_chart(symbol, interval, range_):
+    import requests
+    url="https://query1.finance.yahoo.com/v8/finance/chart/"+symbol
+    params={"interval":interval,"range":range_,"includePrePost":"false","events":"div,splits"}
+    r=requests.get(url,params=params,headers={"User-Agent":"Mozilla/5.0"},timeout=30)
+    r.raise_for_status()
+    result=r.json().get("chart",{}).get("result") or []
+    if not result: return None
+    res=result[0]; ts=res.get("timestamp") or []
+    q=(res.get("indicators",{}).get("quote") or [{}])[0]
+    rows=[]
+    for i,t in enumerate(ts):
+        vals=[q.get(k,[None]*len(ts))[i] for k in ("open","high","low","close")]
+        vol=(q.get("volume") or [0]*len(ts))[i] or 0
+        if all(v is not None for v in vals): rows.append((pd.to_datetime(t,unit="s",utc=True).tz_localize(None),*map(float,vals),float(vol)))
+    return pd.DataFrame(rows,columns=["date","open","high","low","close","volume"]) if rows else None
+
 def flatten_yf_frame(raw, symbol):
     if raw is None or raw.empty: return None
     if isinstance(raw.columns,pd.MultiIndex):
@@ -61,8 +78,13 @@ def flatten_yf_frame(raw, symbol):
     return raw
 
 def load_symbol(symbol):
-    raw=yf.download(symbol,period="2y",interval="1d",auto_adjust=False,repair=True,progress=False,threads=False)
-    raw=flatten_yf_frame(raw,symbol)
+    try:
+        raw=yf.download(symbol,period="2y",interval="1d",auto_adjust=False,repair=True,progress=False,threads=False)
+        raw=flatten_yf_frame(raw,symbol)
+    except Exception as e:
+        print("yfinance daily failed",symbol,repr(e)); raw=None
+    if raw is None or raw.empty: raw=load_yahoo_chart(symbol,"1d","2y")
+    if raw is None or raw.empty: raw=load_yahoo_chart(symbol,interval,period)
     if raw is None or raw.empty: return None
     need=["open","high","low","close","volume"]
     if not all(c in raw.columns for c in need): return None
@@ -123,8 +145,11 @@ def intraday_future_dates(last, interval, n, symbol):
     return pd.Series(out[:n])
 
 def load_intraday(symbol, interval, period):
-    raw=yf.download(symbol,period=period,interval=interval,auto_adjust=False,repair=True,progress=False,threads=False)
-    raw=flatten_yf_frame(raw,symbol)
+    try:
+        raw=yf.download(symbol,period=period,interval=interval,auto_adjust=False,repair=True,progress=False,threads=False)
+        raw=flatten_yf_frame(raw,symbol)
+    except Exception as e:
+        print("yfinance intraday failed",symbol,interval,repr(e)); raw=None
     if raw is None or raw.empty: return None
     need=["open","high","low","close","volume"]
     if not all(c in raw.columns for c in need): return None
