@@ -292,21 +292,22 @@ def main():
                 item["forecast"]={}
                 item["backtest"]=None
             item["intraday"]={}
-            if predictor is not None and symbol in INTRADAY_SYMBOLS:
+            if symbol in INTRADAY_SYMBOLS:
                 for interval,cfg in INTRADAY_CONFIG.items():
                     try:
                         idf=load_intraday(symbol,interval,cfg["period"])
                         if idf is not None and len(idf)>=LOOKBACK:
+                            forecast=[]
+                            if predictor is not None:
+                                forecast=predict_intraday_one(predictor,idf,interval,cfg["pred_len"],symbol)
                             item["intraday"][interval]={
                                 "generated_at":pd.Timestamp.utcnow().isoformat(),
                                 "bars":int(len(idf)),
                                 "last_date":str(idf["date"].iloc[-1].isoformat()),
                                 "history":[{"date":str(row["date"].isoformat()),"open":float(row["open"]),"high":float(row["high"]),"low":float(row["low"]),"close":float(row["close"]),"volume":float(row["volume"])} for _,row in idf.tail(cfg.get("history_bars",600)).iterrows()],
-                                "forecast":predict_intraday_one(predictor,idf,interval,cfg["pred_len"],symbol)
+                                "forecast":forecast
                             }
-                            if not item["intraday"][interval]["forecast"]:
-                                raise RuntimeError(f"Empty Kronos forecast for {symbol} {interval}")
-                            print("OK INTRADAY",symbol,interval,"history",len(item["intraday"][interval]["history"]),"forecast",len(item["intraday"][interval]["forecast"]))
+                            print("OK INTRADAY",symbol,interval,"history",len(item["intraday"][interval]["history"]),"forecast",len(forecast))
                     except Exception as ie:
                         print("SKIP INTRADAY",symbol,interval,repr(ie))
             result["symbols"][symbol]=item
