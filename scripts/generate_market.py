@@ -34,6 +34,19 @@ SYMBOLS=[
 
 HORIZONS=[5,10,20,30]
 LOOKBACK=400
+
+# Intraday forecasts use the same original Kronos-small predictor, but on real
+# 5m/15m/1h OHLCV candles. Keep the set curated so the free GitHub Actions
+# pipeline stays within its time budget.
+INTRADAY_SYMBOLS={
+    "RELIANCE.NS","TCS.NS","INFY.NS","HDFCBANK.NS","ICICIBANK.NS","SBIN.NS",
+    "BHARTIARTL.NS","ITC.NS","LT.NS","AAPL","MSFT","NVDA","TSLA","BTC-USD","ETH-USD"
+}
+INTRADAY_CONFIG={
+    "5m":{"period":"60d","pred_len":24},
+    "15m":{"period":"60d","pred_len":16},
+    "1h":{"period":"730d","pred_len":12},
+}
 GROUP_INDEX=int(os.getenv("GROUP_INDEX","0"))
 GROUP_COUNT=max(1,int(os.getenv("GROUP_COUNT","1")))
 MODEL_ID="NeoQuasar/Kronos-small"
@@ -88,6 +101,61 @@ def rolling_backtest(predictor, df, horizon=5, windows=3):
     e=np.asarray(errors,float)
     return {"windows":int(windows),"horizon":int(horizon),"mae":float(np.mean(np.abs(e))),"rmse":float(np.sqrt(np.mean(e**2))),"direction":float(np.mean(dirs)*100)}
 
+def intraday_future_dates(last, interval, n, symbol):
+    last=pd.Timestamp(last)
+    step=pd.Timedelta(minutes={"5m":5,"15m":15,"1h":60}[interval])
+    crypto=symbol.endswith("-USD")
+    is_india=symbol.endswith(".NS")
+    if crypto:
+        return pd.Series([last+step*i for i in range(1,n+1)])
+    # Approximate regular-session timestamps. This avoids asking Kronos to
+    # forecast through overnight/weekend gaps while keeping timestamps aligned.
+    start_hour,start_min,end_hour,end_min=(9,15,15,30) if is_india else (9,30,16,0)
+    out=[]
+    d=last.normalize()
+    cur=last+step
+    while len(out)<n:
+        if cur.weekday()<5:
+            session_start=d+pd.Timedelta(hours=start_hour,minutes=start_min)
+            session_end=d+pd.Timedelta(hours=end_hour,minutes=end_min)
+            if cur<session_start: cur=session_start
+            while cur<=session_end and len(out)<n:
+                out.append(cur)
+                cur+=step
+        d=d+pd.Timedelta(days=1)
+        cur=d+pd.Timedelta(hours=start_hour,minutes=start_min)
+    return pd.Series(out[:n])
+
+def load_intraday(symbol, interval, period):
+    raw=yf.download(symbol,period=period,interval=interval,auto_adjust=False,progress=False,threads=False)
+    if raw is None or raw.empty: return None
+    if isinstance(raw.columns,pd.MultiIndex):
+        raw=raw.xs(symbol,axis=1,level=1,drop_level=True)
+    raw=raw.rename(columns={c:str(c).lower() for c in raw.columns})
+    need=["open","high","low","close","volume"]
+    if not all(c in raw.columns for c in need): return None
+    raw=raw[need].dropna().reset_index()
+    ts_col="Datetime" if "Datetime" in raw.columns else ("Date" if "Date" in raw.columns else raw.columns[0])
+    raw=raw.rename(columns={ts_col:"date"})
+    raw["date"]=pd.to_datetime(raw["date"])
+    if getattr(raw["date"].dt,"tz",None) is not None:
+        raw["date"]=raw["date"].dt.tz_localize(None)
+    return raw
+
+def predict_intraday_one(predictor, df, interval, pred_len, symbol):
+    if df is None or len(df)<LOOKBACK: return []
+    x=df.tail(LOOKBACK).copy()
+    x_ts=x["date"]
+    y_ts=intraday_future_dates(x_ts.iloc[-1],interval,pred_len,symbol)
+    with torch.no_grad():
+        p=predictor.predict(
+            df=x[["open","high","low","close","volume"]],
+            x_timestamp=x_ts,
+            y_timestamp=y_ts,
+            pred_len=pred_len,T=1.0,top_p=0.9,sample_count=1,verbose=False
+        )
+    return [{"date":str(d.isoformat()),"close":float(v)} for d,v in zip(y_ts,p["close"].values)]
+
 def main():
     device="cuda" if torch.cuda.is_available() else "cpu"
     tokenizer=KronosTokenizer.from_pretrained(TOKENIZER_ID)
@@ -105,6 +173,21 @@ def main():
             for h in HORIZONS:
                 item["forecast"][str(h)]=predict_one(predictor,df,h,symbol)
             item["backtest"]=rolling_backtest(predictor,df,5,3)
+            item["intraday"]={}
+            if symbol in INTRADAY_SYMBOLS:
+                for interval,cfg in INTRADAY_CONFIG.items():
+                    try:
+                        idf=load_intraday(symbol,interval,cfg["period"])
+                        if idf is not None and len(idf)>=LOOKBACK:
+                            item["intraday"][interval]={
+                                "generated_at":pd.Timestamp.utcnow().isoformat(),
+                                "bars":int(len(idf)),
+                                "last_date":str(idf["date"].iloc[-1].isoformat()),
+                                "forecast":predict_intraday_one(predictor,idf,interval,cfg["pred_len"],symbol)
+                            }
+                            print("OK INTRADAY",symbol,interval)
+                    except Exception as ie:
+                        print("SKIP INTRADAY",symbol,interval,repr(ie))
             result["symbols"][symbol]=item
             print("OK",symbol)
         except Exception as e:
