@@ -10,7 +10,10 @@ $("horizon").addEventListener("change",()=>{if(rows.length)render();});
 $("range").addEventListener("change",()=>{if(rows.length)render();});
 $("chartType").addEventListener("change",()=>{if(rows.length)render();});
 $("chart").addEventListener("mousemove",chartHover);
-$("chart").addEventListener("mouseleave",()=>$("chartTip").classList.add("hidden"));
+$("chart").addEventListener("mouseleave",()=>{chartState.hoverIndex=-1; $("chartTip").classList.add("hidden"); renderChartOnly();});
+$("chart").addEventListener("pointermove",chartHover,{passive:true});
+$("chart").addEventListener("pointerleave",()=>{chartState.hoverIndex=-1; $("chartTip").classList.add("hidden"); renderChartOnly();});
+$("chart").addEventListener("wheel",chartWheel,{passive:false});
 $("symbolInput").addEventListener("keydown",e=>{if(e.key==="Enter")loadMarket();});
 setInterval(()=>{if(!document.hidden && dataSource==="AUTO") refreshLiveQuote();},LIVE_REFRESH_MS);
 window.addEventListener("beforeunload",()=>{if(btcSocket)btcSocket.close();});
@@ -82,7 +85,7 @@ async function loadMarket(){
    autoPayload=await loadPayload();
    const item=autoPayload.symbols?.[s];
    if(!item)throw Error("Ticker not in generated universe");
-   rows=item.history.map(x=>({date:x.date,open:+x.open,high:+x.high,low:+x.low,close:+x.close,volume:+(x.volume||0)}));
+   rows=normalizeChartRows(item.history);
    render();setStatus("KRONOS READY • "+item.last_date,true);refreshLiveQuote();
  }catch(e){
    setStatus("TICKER NOT AVAILABLE",false);
@@ -93,7 +96,7 @@ async function loadMarket(){
 function render(){
  const s=activeSymbol,item=autoPayload?.symbols?.[s],n=+$("horizon").value,range=+$("range").value;
  $("symbol").textContent=(dataSource==="CSV"?"CUSTOM • ":"")+s+" • DAILY";
- const hist=rows.slice(-Math.min(range,rows.length)),last=hist.at(-1).close;
+ const hist=normalizeChartRows(rows).slice(-Math.min(range,rows.length));if(!hist.length){throw Error("No valid OHLC history");}const last=hist.at(-1).close;
  $("last").textContent=fmt(last);$("lastMini").textContent=fmt(last);$("lastDate").textContent="Latest available • "+(item?.last_date||hist.at(-1).date);
  $("horizonOut").textContent=n+" sessions";
  $("dataMini").textContent=dataSource==="AUTO"?"AUTO":"CSV";
@@ -121,33 +124,117 @@ function render(){
    clearBacktest("Custom CSV loaded. Automatic model backtests are kept separate from custom browser data.");
  }
 }
-let chartState={hist:[],pred:[],live:null,mn:0,mx:1,pad:44,w:0,h:0,total:0};
+let chartState={hist:[],pred:[],live:null,mn:0,mx:1,pad:44,w:0,h:0,total:0,hoverIndex:-1};
+function normalizeChartRows(list){
+  return (Array.isArray(list)?list:[]).map(v=>({
+    date:String(v?.date||""),
+    open:Number(v?.open),
+    high:Number(v?.high),
+    low:Number(v?.low),
+    close:Number(v?.close),
+    volume:Number(v?.volume||0)
+  })).filter(v=>v.date&&Number.isFinite(v.close)&&Number.isFinite(v.high)&&Number.isFinite(v.low));
+}
+function normalizeForecast(list){
+  return (Array.isArray(list)?list:[]).map(v=>({date:String(v?.date||""),close:Number(v?.close)}))
+    .filter(v=>v.date&&Number.isFinite(v.close));
+}
+function renderChartOnly(){draw(chartState.hist,chartState.pred);}
 function draw(hist,pred){
- const c=$("chart"),x=c.getContext("2d"),dpr=devicePixelRatio||1,w=c.clientWidth,h=c.clientHeight;
- c.width=w*dpr;c.height=h*dpr;x.setTransform(dpr,0,0,dpr,0,0);x.clearRect(0,0,w,h);
- const live=liveQuote?.price, all=hist.concat(pred.map(v=>({date:v.date,close:+v.close}))), vals=hist.flatMap(v=>[v.low??v.close,v.high??v.close]).concat(pred.map(v=>+v.close));
- if(Number.isFinite(live))vals.push(live); let mn=Math.min(...vals),mx=Math.max(...vals),pad=42; const span=mx-mn||1; mn-=span*.06;mx+=span*.06;
- chartState={hist,pred,live,mn,mx,pad,w,h,total:all.length};
- const X=i=>pad+i*(w-pad*2)/Math.max(1,all.length-1),Y=v=>h-pad-(v-mn)/(mx-mn)*(h-pad*2);
- x.fillStyle="#0b0f15";x.fillRect(0,0,w,h); x.font="10px Inter, sans-serif";
- x.strokeStyle="#202733";x.lineWidth=1;
- for(let i=0;i<5;i++){const yy=pad+i*(h-pad*2)/4;x.beginPath();x.moveTo(pad,yy);x.lineTo(w-pad,yy);x.stroke();const val=mx-(mx-mn)*i/4;x.fillStyle="#778296";x.fillText(fmt(val),6,yy+3);}
- const ticks=Math.min(6,hist.length); for(let k=0;k<ticks;k++){const idx=Math.round(k*(hist.length-1)/Math.max(1,ticks-1));const xx=X(idx);x.fillStyle="#778296";x.fillText(shortDate(hist[idx]?.date),Math.max(pad,xx-20),h-10);}
- const type=$("chartType").value;
- if(type==="candles"){
-   const step=(w-pad*2)/Math.max(1,all.length-1),cw=Math.max(2,Math.min(12,step*.62));
-   hist.forEach((v,i)=>{const o=+v.open||+v.close,hi=+v.high||+v.close,lo=+v.low||+v.close,cl=+v.close;const up=cl>=o; x.strokeStyle=up?"#79e38b":"#ff7f7f";x.fillStyle=up?"#79e38b":"#ff7f7f";x.lineWidth=1;x.beginPath();x.moveTo(X(i),Y(hi));x.lineTo(X(i),Y(lo));x.stroke();const top=Y(Math.max(o,cl)),bot=Y(Math.min(o,cl));x.fillRect(X(i)-cw/2,top,cw,Math.max(1,bot-top));});
- }else{
-   x.strokeStyle="#e9edf3";x.lineWidth=2;x.beginPath();hist.forEach((v,i)=>i?x.lineTo(X(i),Y(+v.close)):x.moveTo(X(i),Y(+v.close)));x.stroke();
-   if(type==="area"){x.lineTo(X(hist.length-1),h-pad);x.lineTo(X(0),h-pad);x.closePath();x.globalAlpha=.10;x.fillStyle="#e9edf3";x.fill();x.globalAlpha=1;}
- }
- if(pred.length){x.strokeStyle="#a9ff6b";x.lineWidth=2;x.setLineDash([6,5]);x.beginPath();x.moveTo(X(hist.length-1),Y(hist.at(-1).close));pred.forEach((v,j)=>x.lineTo(X(hist.length+j),Y(+v.close)));x.stroke();x.setLineDash([]);}
- if(Number.isFinite(live)){const lx=X(Math.max(0,hist.length-1)),ly=Y(live);x.strokeStyle="#5bd6ff";x.lineWidth=1;x.setLineDash([3,3]);x.beginPath();x.moveTo(pad,ly);x.lineTo(w-pad,ly);x.stroke();x.setLineDash([]);x.fillStyle="#5bd6ff";x.beginPath();x.arc(lx,ly,4,0,Math.PI*2);x.fill();x.fillText("LIVE",w-pad-30,ly-7);}
+  const c=$("chart"),ctx=c.getContext("2d"),dpr=window.devicePixelRatio||1;
+  const rect=c.getBoundingClientRect(),w=Math.max(1,rect.width),h=Math.max(1,rect.height);
+  c.width=Math.round(w*dpr);c.height=Math.round(h*dpr);ctx.setTransform(dpr,0,0,dpr,0,0);ctx.clearRect(0,0,w,h);
+  hist=normalizeChartRows(hist);pred=normalizeForecast(pred);
+  const live=Number.isFinite(Number(liveQuote?.price))?Number(liveQuote.price):null;
+  const values=hist.flatMap(v=>[v.low,v.high,v.open,v.close]).concat(pred.map(v=>v.close));
+  if(live!==null)values.push(live);
+  const finite=values.filter(Number.isFinite);
+  if(!finite.length){
+    ctx.fillStyle="#778296";ctx.font="12px Inter, sans-serif";ctx.fillText("No valid OHLC data available",16,28);
+    chartState={...chartState,hist,pred,live,mn:0,mx:1,pad:44,w,h,total:Math.max(0,hist.length+pred.length),hoverIndex:-1};
+    return;
+  }
+  let mn=Math.min(...finite),mx=Math.max(...finite),span=mx-mn;
+  if(!Number.isFinite(span)||span<=0)span=Math.max(Math.abs(mx)*.01,1);
+  mn-=span*.07;mx+=span*.07;
+  const pad=44,volumeH=42,priceBottom=h-pad-volumeH;
+  const total=Math.max(1,hist.length+pred.length),step=(w-pad*2)/Math.max(1,total-1);
+  chartState={hist,pred,live,mn,mx,pad,w,h,total,step,priceBottom,hoverIndex:chartState.hoverIndex??-1};
+  const X=i=>pad+i*step,Y=v=>priceBottom-(v-mn)/(mx-mn)*(priceBottom-pad);
+  ctx.fillStyle="#0b0f15";ctx.fillRect(0,0,w,h);ctx.font="10px Inter, sans-serif";
+  ctx.strokeStyle="#202733";ctx.lineWidth=1;
+  for(let i=0;i<5;i++){
+    const yy=pad+i*(priceBottom-pad)/4,val=mx-(mx-mn)*i/4;
+    ctx.beginPath();ctx.moveTo(pad,yy);ctx.lineTo(w-pad,yy);ctx.stroke();
+    ctx.fillStyle="#778296";ctx.fillText(fmt(val),6,yy+3);
+  }
+  const ticks=Math.min(6,hist.length);
+  for(let k=0;k<ticks;k++){
+    const idx=Math.round(k*(hist.length-1)/Math.max(1,ticks-1)),xx=X(idx);
+    ctx.fillStyle="#778296";ctx.fillText(shortDate(hist[idx]?.date||""),Math.max(pad,Math.min(w-pad-38,xx-20)),h-8);
+  }
+  const type=$("chartType").value;
+  if(type==="candles"){
+    const cw=Math.max(2,Math.min(12,step*.62));
+    hist.forEach((v,i)=>{
+      const o=v.open,hv=v.high,lo=v.low,cl=v.close,up=cl>=o;
+      ctx.strokeStyle=up?"#79e38b":"#ff7f7f";ctx.fillStyle=up?"#79e38b":"#ff7f7f";
+      ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(X(i),Y(hv));ctx.lineTo(X(i),Y(lo));ctx.stroke();
+      const top=Y(Math.max(o,cl)),bot=Y(Math.min(o,cl));ctx.fillRect(X(i)-cw/2,top,cw,Math.max(1,bot-top));
+    });
+  }else{
+    ctx.strokeStyle="#e9edf3";ctx.lineWidth=2;ctx.beginPath();
+    hist.forEach((v,i)=>i?ctx.lineTo(X(i),Y(v.close)):ctx.moveTo(X(i),Y(v.close)));ctx.stroke();
+    if(type==="area"&&hist.length){
+      ctx.lineTo(X(hist.length-1),priceBottom);ctx.lineTo(X(0),priceBottom);ctx.closePath();
+      ctx.globalAlpha=.10;ctx.fillStyle="#e9edf3";ctx.fill();ctx.globalAlpha=1;
+    }
+  }
+  if(pred.length){
+    ctx.strokeStyle="#a9ff6b";ctx.lineWidth=2;ctx.setLineDash([6,5]);ctx.beginPath();
+    ctx.moveTo(X(Math.max(0,hist.length-1)),Y(hist.at(-1).close));
+    pred.forEach((v,j)=>ctx.lineTo(X(hist.length+j),Y(v.close)));
+    ctx.stroke();ctx.setLineDash([]);
+  }
+  const maxVol=Math.max(1,...hist.map(v=>Number.isFinite(v.volume)?v.volume:0));
+  const volTop=priceBottom+7,volBottom=h-pad-19;
+  hist.forEach((v,i)=>{
+    const vh=(v.volume/maxVol)*Math.max(2,volBottom-volTop),cw=Math.max(2,Math.min(10,step*.7));
+    ctx.fillStyle=v.close>=v.open?"#79e38b66":"#ff7f7f66";ctx.fillRect(X(i)-cw/2,volBottom-vh,cw,vh);
+  });
+  ctx.fillStyle="#586476";ctx.font="8px Inter, sans-serif";ctx.fillText("VOLUME",pad,volTop+9);
+  if(live!==null){
+    const lx=X(Math.max(0,hist.length-1)),ly=Y(live);
+    ctx.strokeStyle="#5bd6ff";ctx.lineWidth=1;ctx.setLineDash([3,3]);ctx.beginPath();ctx.moveTo(pad,ly);ctx.lineTo(w-pad,ly);ctx.stroke();ctx.setLineDash([]);
+    ctx.fillStyle="#5bd6ff";ctx.beginPath();ctx.arc(lx,ly,4,0,Math.PI*2);ctx.fill();
+    ctx.font="9px Inter, sans-serif";ctx.fillText("LIVE "+fmt(live),Math.max(pad,w-pad-72),Math.max(pad+10,ly-7));
+  }
+  if(Number.isInteger(chartState.hoverIndex)&&chartState.hoverIndex>=0&&chartState.hoverIndex<hist.length){
+    const i=chartState.hoverIndex,v=hist[i],xx=X(i),yy=Y(v.close);
+    ctx.strokeStyle="#66738488";ctx.lineWidth=1;ctx.setLineDash([2,3]);
+    ctx.beginPath();ctx.moveTo(xx,pad);ctx.lineTo(xx,priceBottom);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(pad,yy);ctx.lineTo(w-pad,yy);ctx.stroke();ctx.setLineDash([]);
+    ctx.fillStyle="#e9edf3";ctx.beginPath();ctx.arc(xx,yy,3,0,Math.PI*2);ctx.fill();
+  }
 }
 function shortDate(s){const d=new Date(s+"T00:00:00");return Number.isNaN(d.getTime())?s.slice(0,10):d.toLocaleDateString(undefined,{day:"2-digit",month:"short"});}
 function chartHover(e){
- if(!chartState.hist.length)return; const c=$("chart"),r=c.getBoundingClientRect(),px=e.clientX-r.left,pad=chartState.pad,step=(chartState.w-pad*2)/Math.max(1,chartState.total-1);let i=Math.round((px-pad)/step);i=Math.max(0,Math.min(chartState.hist.length-1,i));const v=chartState.hist[i];if(!v)return;
- const tip=$("chartTip");tip.classList.remove("hidden");tip.innerHTML='<b>'+v.date+'</b><span>O '+fmt(v.open)+' · H '+fmt(v.high)+' · L '+fmt(v.low)+' · C '+fmt(v.close)+'</span><span>Volume '+Number(v.volume||0).toLocaleString()+'</span>';tip.style.left=Math.min(Math.max(px+12,8),c.clientWidth-205)+"px";tip.style.top=Math.max(8,e.clientY-r.top-58)+"px";
+  if(!chartState.hist.length)return;
+  const c=$("chart"),r=c.getBoundingClientRect(),px=e.clientX-r.left,pad=chartState.pad,step=chartState.step||((chartState.w-pad*2)/Math.max(1,chartState.total-1));
+  let i=Math.round((px-pad)/step);i=Math.max(0,Math.min(chartState.hist.length-1,i));
+  chartState.hoverIndex=i;renderChartOnly();
+  const v=chartState.hist[i],tip=$("chartTip");if(!v)return;
+  tip.classList.remove("hidden");
+  tip.innerHTML="<b>"+v.date+"</b><span>O "+fmt(v.open)+" · H "+fmt(v.high)+" · L "+fmt(v.low)+" · C "+fmt(v.close)+"</span><span>Volume "+Number(v.volume||0).toLocaleString()+"</span>";
+  tip.style.left=Math.min(Math.max(px+12,8),Math.max(8,c.clientWidth-205))+"px";
+  tip.style.top=Math.max(8,e.clientY-r.top-58)+"px";
+}
+function chartWheel(e){
+  e.preventDefault();
+  if(!chartState.hist.length)return;
+  const current=Number($("range").value||252),opts=[5,22,66,132,252,400];
+  const pos=Math.max(0,opts.indexOf(current)),next=e.deltaY<0?Math.min(opts.length-1,pos+1):Math.max(0,pos-1);
+  $("range").value=String(opts[next]);render();
 }
 function renderBacktest(bt){
  if(!bt)return clearBacktest("No rolling backtest is available for this symbol yet.");
