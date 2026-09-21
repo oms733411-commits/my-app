@@ -503,7 +503,7 @@ function clearBacktest(note){["mae","rmse","dir"].forEach(id=>$(id).textContent=
 
 function readCSV(file){
  if(!file)return;
- if(!/\\.(csv|txt)$/i.test(file.name))return alert("Please choose a CSV file.");
+ if(!/\.(csv|txt)$/i.test(file.name))return alert("Please choose a CSV file.");
  const r=new FileReader();
  r.onload=()=>{
   try{
@@ -517,46 +517,61 @@ function readCSV(file){
  r.readAsText(file);
 }
 function parseCSV(text){
- const clean=text.replace(/^\\uFEFF/,"").trim();
+ const clean=String(text||"").replace(/^\uFEFF/,"").trim();
  if(!clean)throw Error("empty");
- const detect=clean.split(/\\r?\\n/).slice(0,3).join("\\n");
- const candidates=[",",";","\\t"];
- const delim=candidates.map(d=>({d,n:(detect.match(new RegExp(d==="\\t"?"\\t":d===","?",":";","g"))||[]).length})).sort((x,y)=>y.n-x.n)[0].d;
+ const rawLines=clean.split(/\r?\n/).filter(x=>x.trim());
+ const detect=rawLines.slice(0,4).join("\n");
+ const counts=[
+   {d:",",n:(detect.match(/,/g)||[]).length},
+   {d:";",n:(detect.match(/;/g)||[]).length},
+   {d:"\t",n:(detect.match(/\t/g)||[]).length}
+ ].sort((a,b)=>b.n-a.n);
+ const delim=counts[0].n?counts[0].d:",";
  const parseLine=line=>{
    const out=[];let cur="",q=false;
    for(let i=0;i<line.length;i++){
      const ch=line[i];
-     if(ch==='"'){
-       if(q&&line[i+1]==='"'){cur+='"';i++;continue;}
+     if(ch==="""){
+       if(q&&line[i+1]==="""){cur+=""";i++;continue;}
        q=!q;continue;
      }
      if(ch===delim&&!q){out.push(cur.trim());cur="";}else cur+=ch;
    }
    out.push(cur.trim());return out;
  };
- const lines=clean.split(/\\r?\\n/).filter(x=>x.trim());
- let header=parseLine(lines[0]).map(v=>v.replace(/^["']|["']$/g,"").trim().toLowerCase());
- let dataLines=lines.slice(1);
- // Support yfinance's two-row MultiIndex CSV export: Price row + Ticker row.
- if(header[0]==="price" && dataLines.length && /^ticker$/i.test(parseLine(dataLines[0])[0]||"")){
-   dataLines=dataLines.slice(1);
-   header[0]="date";
- }
- const find=names=>{
+ const raw=rawLines.map(parseLine);
+ const norm=v=>String(v??"").replace(/^["']|["']$/g,"").trim().toLowerCase().replace(/[\s_-]+/g,"");
+ const num=v=>{const n=Number(String(v??"").replace(/,/g,"").trim());return Number.isFinite(n)?n:NaN;};
+ const find=(headers,names)=>{
    for(const n of names){
-     const i=header.findIndex(v=>v===n||v.replace(/[ _-]/g,"").includes(n.replace(/[ _-]/g,"")));
+     const target=norm(n);
+     const i=headers.findIndex(h=>{const x=norm(h);return x===target||x.includes(target)||target.includes(x);});
      if(i>=0)return i;
    }
    return -1;
  };
- const ti=find(["timestamp","datetime","date","time","index"]);
- const oi=find(["open"]),hi=find(["high"]),li=find(["low"]),ci=find(["close","adj close","adj_close"]),vi=find(["volume"]);
+ let header=raw[0].map(norm),data=raw.slice(1);
+ // Common yfinance two-row export: Price row followed by Ticker row.
+ if(header.some(x=>x==="price")&&raw[1]){
+   header=raw[0].map((v,i)=>norm(v)==="price"?norm(raw[1][i]):norm(v));
+   data=raw.slice(2);
+ }
+ let ti=find(header,["date","timestamp","datetime","time","index"]);
+ let oi=find(header,["open"]),hi=find(header,["high"]),li=find(header,["low"]);
+ let ci=find(header,["close","adjclose"]),vi=find(header,["volume"]);
+ // Handle generic two-level headers by combining the first two rows.
+ if(Math.min(ti,oi,hi,li,ci)<0&&raw.length>=3){
+   const combined=raw[0].map((v,i)=>[v,raw[1][i]||""].filter(Boolean).join(" "));
+   ti=find(combined,["date","timestamp","datetime","time","index"]);
+   oi=find(combined,["open"]);hi=find(combined,["high"]);li=find(combined,["low"]);
+   ci=find(combined,["close","adjclose"]);vi=find(combined,["volume"]);
+   if(Math.min(ti,oi,hi,li,ci)>=0)data=raw.slice(2);
+ }
  if(Math.min(ti,oi,hi,li,ci)<0)throw Error("missing OHLC");
- return dataLines.map(line=>{
-   const a=parseLine(line);
-   const num=v=>{const n=Number(String(v??"").replace(/,/g,""));return Number.isFinite(n)?n:NaN;};
-   return {date:String(a[ti]||"").trim(),open:num(a[oi]),high:num(a[hi]),low:num(a[li]),close:num(a[ci]),volume:vi>=0?num(a[vi])||0:0};
- }).filter(x=>x.date&&[x.open,x.high,x.low,x.close].every(Number.isFinite));
+ return data.map(a=>({
+   date:String(a[ti]??"").trim(),open:num(a[oi]),high:num(a[hi]),low:num(a[li]),close:num(a[ci]),
+   volume:vi>=0?(Number.isFinite(num(a[vi]))?num(a[vi]):0):0
+ })).filter(x=>x.date&&[x.open,x.high,x.low,x.close].every(Number.isFinite));
 }
 
 function showScreenshot(file){
