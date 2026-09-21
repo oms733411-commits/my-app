@@ -38,7 +38,7 @@ $("chart").addEventListener("mouseleave",()=>{chartState.hoverIndex=-1; $("chart
 $("chart").addEventListener("pointermove",chartHover,{passive:true});
 $("chart").addEventListener("pointerleave",()=>{chartState.hoverIndex=-1; $("chartTip").classList.add("hidden"); renderChartOnly();});
 $("chart").addEventListener("wheel",chartWheel,{passive:false});
-$("symbolInput").addEventListener("keydown",e=>{if(e.key==="Enter")loadMarket();});
+$("symbolInput").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();loadMarket();}});
 setInterval(()=>{if(!document.hidden && dataSource==="AUTO") refreshLiveQuote();},LIVE_REFRESH_MS);
 window.addEventListener("beforeunload",()=>{if(btcSocket)btcSocket.close();});
 ["dragenter","dragover"].forEach(x=>$("drop").addEventListener(x,e=>{e.preventDefault();$("drop").classList.add("drag");}));
@@ -70,9 +70,13 @@ async function fetchLiveQuote(symbol){
   return {price,change:Number.isFinite(change)?change:null,source:"Yahoo Finance quote",time:m.regularMarketTime?new Date(m.regularMarketTime*1000):new Date()};
 }
 async function refreshLiveQuote(){
-  if(dataSource!=="AUTO"||!activeSymbol)return;
+  const token=++liveQuoteToken;
+  const symbolAtStart=activeSymbol;
+  if(dataSource!=="AUTO"||!symbolAtStart)return;
   try{
-    liveQuote=await fetchLiveQuote(activeSymbol);
+    const quote=await fetchLiveQuote(symbolAtStart);
+    if(token!==liveQuoteToken||symbolAtStart!==activeSymbol||dataSource!=="AUTO")return;
+    liveQuote=quote;
     if(!liveQuote||!Number.isFinite(liveQuote.price))return;
     $("last").textContent=fmt(liveQuote.price);
     $("lastMini").textContent=fmt(liveQuote.price);
@@ -103,9 +107,12 @@ async function loadPayload(){
  if(!r.ok)throw Error("market dataset unavailable");
  return await r.json();
 }
-let chartLoadToken=0;
+let chartLoadToken=0, marketLoadToken=0, liveQuoteToken=0, marketAbort=null, intradayAbort=null;
 async function loadChartMode(){
   const token=++chartLoadToken;
+  if(intradayAbort) try{intradayAbort.abort();}catch{}
+  intradayAbort=new AbortController();
+  const signal=intradayAbort.signal;
   const mode=$("interval")?.value||"1d";
   syncTimeframeButtons();
   if(mode==="1d"){
@@ -117,14 +124,15 @@ async function loadChartMode(){
   const range=$("intradayRange")?.value||"1d";
   setStatus("LOADING "+mode.toUpperCase()+" INTRADAY");
   try{
-    const allIntraday=await fetchIntraday(activeSymbol,mode,range);
-    if(token!==chartLoadToken)return;
+    const symbolAtStart=activeSymbol;
+    const allIntraday=await fetchIntraday(symbolAtStart,mode,range,signal);
+    if(token!==chartLoadToken||symbolAtStart!==activeSymbol||signal.aborted)return;
     if(!allIntraday.length)throw Error("No intraday data");
     const barsPerDay={"5m":78,"15m":26,"1h":7};
     const requestedDays=range==="1d"?1:range==="5d"?5:22;
     const intraday=allIntraday.slice(-(barsPerDay[mode]||78)*requestedDays);
     chartState.intraday=true;
-    const intradayPack=autoPayload?.symbols?.[activeSymbol]?.intraday?.[mode];
+    const intradayPack=autoPayload?.symbols?.[symbolAtStart]?.intraday?.[mode];
     if(token!==chartLoadToken)return;
     const pred=normalizeForecast(intradayPack?.forecast||[]);
     if(!pred.length){
@@ -165,7 +173,7 @@ async function loadChartMode(){
     setStatus("INTRADAY ERROR • "+(e?.message||"FEED UNAVAILABLE"),false);
   }
 }
-async function fetchIntraday(symbol,interval,range){
+async function fetchIntraday(symbol,interval,range,signal){
   // Prefer the generated GitHub dataset. This avoids browser CORS/provider failures.
   const pack=autoPayload?.symbols?.[symbol]?.intraday?.[interval];
   if(Array.isArray(pack?.history) && pack.history.length){
@@ -176,14 +184,14 @@ async function fetchIntraday(symbol,interval,range){
     const map={ "5m":"5m","15m":"15m","1h":"1h" };
     const bin= symbol==="BTC-USD"?"BTCUSDT":"ETHUSDT";
     const limit=range==="1d"?288:range==="5d"?1000:1000;
-    const r=await fetch("https://api.binance.com/api/v3/klines?symbol="+bin+"&interval="+map[interval]+"&limit="+limit,{cache:"no-store"});
+    const r=await fetch("https://api.binance.com/api/v3/klines?symbol="+bin+"&interval="+map[interval]+"&limit="+limit,{cache:"no-store",signal});
     if(r.ok){
       const a=await r.json();
       return a.map(v=>({date:new Date(+v[0]).toISOString(),open:+v[1],high:+v[2],low:+v[3],close:+v[4],volume:+v[5]})).filter(v=>[v.open,v.high,v.low,v.close].every(Number.isFinite));
     }
   }
   const url="https://query1.finance.yahoo.com/v8/finance/chart/"+encodeURIComponent(symbol)+"?interval="+encodeURIComponent(interval)+"&range="+encodeURIComponent(range);
-  const r=await fetch(url,{cache:"no-store"}); if(!r.ok)throw Error("intraday unavailable");
+  const r=await fetch(url,{cache:"no-store",signal}); if(!r.ok)throw Error("intraday unavailable");
   const j=await r.json(),res=j.chart?.result?.[0]; if(!res)throw Error("no intraday result");
   const q=res.indicators?.quote?.[0]||{},ts=res.timestamp||[];
   return ts.map((t,i)=>({date:new Date(t*1000).toISOString(),open:+q.open?.[i],high:+q.high?.[i],low:+q.low?.[i],close:+q.close?.[i],volume:+q.volume?.[i]||0}))
@@ -191,17 +199,45 @@ async function fetchIntraday(symbol,interval,range){
 }
 async function loadMarket(){
  const s=$("symbolInput").value.trim().toUpperCase();if(!s)return;
- activeSymbol=s;localStorage.setItem("kronos-symbol",s);dataSource="AUTO";setBusy(true);setStatus("LOADING KRONOS DATA");
+ const token=++marketLoadToken;
+ if(marketAbort) try{marketAbort.abort();}catch{}
+ if(intradayAbort) try{intradayAbort.abort();}catch{}
+ chartLoadToken++;
+ liveQuoteToken++;
+ marketAbort=new AbortController();
+ activeSymbol=s;
+ localStorage.setItem("kronos-symbol",s);
+ dataSource="AUTO";
+ liveQuote=null;
+ $("last").textContent="—";$("lastMini").textContent="—";
+ $("lastDate").textContent="Loading "+s+"…";
+ $("dataMini").textContent="LOADING";
+ $("updatedMini").textContent="—";
+ setBusy(true);setStatus("LOADING "+s+" • MARKET DATA");
  try{
    autoPayload=await loadPayload();
+   if(token!==marketLoadToken)return;
    const item=autoPayload.symbols?.[s];
    if(!item)throw Error("Ticker not in generated universe");
-   rows=normalizeChartRows(item.history); chartState.intraday=false;
-   render();setStatus("KRONOS READY • "+item.last_date,true);refreshLiveQuote();
+   rows=normalizeChartRows(item.history);
+   if(!rows.length)throw Error("No market history");
+   chartState.intraday=false;
+   $("symbol").textContent=s+" • DAILY";
+   render();
+   if(token!==marketLoadToken)return;
+   setStatus("MARKET READY • "+(item.last_date||"latest"),true);
+   refreshLiveQuote();
  }catch(e){
+   if(token!==marketLoadToken)return;
+   if(e?.name==="AbortError")return;
+   console.error("Market load failed",e);
+   autoPayload=null;rows=[];
    setStatus("TICKER NOT AVAILABLE",false);
-   $("signalText").textContent="This ticker is not in the current automatic generated universe. Upload a CSV for custom history or choose a Quick Access market.";
- }finally{setBusy(false);}
+   $("symbol").textContent=s+" • UNAVAILABLE";
+   $("signalText").textContent="No automatic dataset is available for this ticker yet. Choose a supported market or upload a CSV.";
+ }finally{
+   if(token===marketLoadToken)setBusy(false);
+ }
 }
 
 function render(){
