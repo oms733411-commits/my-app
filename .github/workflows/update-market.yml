@@ -31,6 +31,7 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -r scripts/requirements.txt
       - name: Generate verified market history
+        timeout-minutes: 15
         env:
           GROUP_INDEX: "0"
           GROUP_COUNT: "1"
@@ -45,6 +46,8 @@ jobs:
           data=json.loads(p.read_text())
           expected={"RELIANCE.NS","IDEA.NS","BTC-USD","XAUUSD=X","INFY.NS"}
           actual=set(data.get("symbols",{}))
+          if not actual:
+              raise SystemExit("Market generator produced ZERO symbols; refusing to publish empty market data")
           missing=expected-actual
           if missing:
               raise SystemExit("Missing market symbols: "+", ".join(sorted(missing)))
