@@ -303,58 +303,50 @@ async function loadMarket(){
  marketAbort=new AbortController();
  activeSymbol=s;
  localStorage.setItem("kronos-symbol",s);
- dataSource="AUTO";
- liveQuote=null;
+ dataSource="AUTO"; liveQuote=null;
  $("last").textContent="—";$("lastMini").textContent="—";
  $("lastDate").textContent="Loading "+s+"…";
- $("dataMini").textContent="LOADING";
- $("updatedMini").textContent="—";
+ $("dataMini").textContent="LOADING";$("updatedMini").textContent="—";
  setBusy(true);setStatus("LOADING "+s+" • MARKET DATA");
  try{
-   autoPayload=await loadPayload();
+   let loaded=null;
+   try{ loaded=await loadPayload(); }catch(e){ console.warn("Generated dataset unavailable",e); }
    if(token!==marketLoadToken)return;
-   const item=autoPayload.symbols?.[s];
-   if(!item)throw Error("Ticker not in generated universe");
-   rows=normalizeChartRows(item.history);
-   if(!rows.length)throw Error("No market history");
+   const item=loaded?.symbols?.[s];
+   if(item?.history){
+     autoPayload=loaded; rows=normalizeChartRows(item.history);
+   }
+   if(!rows.length){
+     const fallback=await fetchDailyFallback(s);
+     if(token!==marketLoadToken)return;
+     if(!fallback.length)throw Error("No valid market history");
+     autoPayload=loaded||null; rows=fallback;
+     $("symbol").textContent=s+" • DAILY • LIVE FEED";
+     render();
+     setStatus("LIVE FEED READY • "+rows.at(-1).date.slice(0,10),true);
+     $("signalText").textContent="Live OHLC data is loaded. Kronos forecast appears when generated model data is available.";
+     refreshLiveQuote();
+     return;
+   }
    chartState.intraday=false;
+   $("interval").value="1d";syncTimeframeButtons();
    $("symbol").textContent=s+" • DAILY";
    render();
    if(token!==marketLoadToken)return;
-   setStatus("MARKET READY • "+(item.last_date||"latest"),true);
+   setStatus(item?"MARKET READY • "+(item.last_date||"latest"):"LIVE HISTORY READY",true);
    refreshLiveQuote();
  }catch(e){
-   if(token!==marketLoadToken)return;
-   if(e?.name==="AbortError")return;
-   console.error("Generated market dataset load failed, trying direct daily feed",e);
-   // Fallback: keep the daily chart usable even when the scheduled GitHub dataset
-   // is temporarily unavailable or a symbol is missing from the generated payload.
-   try{
-     const fallback=await fetchDailyFallback(s);
-     if(token!==marketLoadToken)return;
-     if(!fallback.length)throw Error("No valid daily fallback rows");
-     autoPayload=null;
-     rows=fallback;
-     chartState.intraday=false;
-     $("symbol").textContent=s+" • DAILY • LIVE FEED";
-     render();
-     setStatus("LIVE FEED READY • KRONOS DATA UPDATING",true);
-     $("signalText").textContent="Live daily OHLC data is available now. The original Kronos forecast will return automatically when the generated market dataset is published.";
-     refreshLiveQuote();
-     return;
-   }catch(fallbackError){
-     if(token!==marketLoadToken)return;
-     console.error("Daily market fallback failed",fallbackError);
-     autoPayload=null;rows=[];
-     setStatus("TICKER NOT AVAILABLE",false);
-     $("symbol").textContent=s+" • UNAVAILABLE";
-     $("signalText").textContent="No automatic dataset or live daily feed is available for this ticker yet. Choose a supported market or upload a CSV.";
-   }
+   if(token!==marketLoadToken||e?.name==="AbortError")return;
+   console.error("Market load failed",e);
+   autoPayload=null;rows=[];
+   setStatus("MARKET DATA UNAVAILABLE",false);
+   $("symbol").textContent=s+" • UNAVAILABLE";
+   $("signalText").textContent="No valid market history could be loaded. Try Refresh or choose a supported market.";
+   clearBacktest("Market data unavailable.");
  }finally{
    if(token===marketLoadToken)setBusy(false);
  }
 }
-
 function render(){
  const s=activeSymbol,item=autoPayload?.symbols?.[s],n=+$("horizon").value,range=+$("range").value;
  if(($("interval")?.value||"1d")!=="1d"){ loadChartMode(); return; }
