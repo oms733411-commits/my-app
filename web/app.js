@@ -23,7 +23,7 @@ $("drop").addEventListener("drop",e=>readCSV(e.dataTransfer.files[0]));
 
 function setStatus(t,ok=true){$("statusText").textContent=t;$("statusDot").classList.toggle("bad",!ok);}
 function setBusy(v){$("refreshBtn").disabled=v;$("refreshBtn").textContent=v?"Loading…":"Refresh";}
-function fmt(n){return Number(n).toLocaleString(undefined,{maximumFractionDigits:2});}
+function fmt(n){const x=Number(n);return Number.isFinite(x)?x.toLocaleString(undefined,{maximumFractionDigits:2}):"—";}
 async function fetchLiveQuote(symbol){
   if(symbol==="BTC-USD"){
     return await new Promise((resolve,reject)=>{
@@ -142,82 +142,85 @@ function normalizeForecast(list){
 function renderChartOnly(){draw(chartState.hist,chartState.pred);}
 function draw(hist,pred){
   const c=$("chart"),ctx=c.getContext("2d"),dpr=window.devicePixelRatio||1;
-  const rect=c.getBoundingClientRect(),w=Math.max(1,rect.width),h=Math.max(1,rect.height);
+  const rect=c.getBoundingClientRect(),w=Math.max(320,Math.floor(rect.width||320)),h=Math.max(260,Math.floor(rect.height||300));
   c.width=Math.round(w*dpr);c.height=Math.round(h*dpr);ctx.setTransform(dpr,0,0,dpr,0,0);ctx.clearRect(0,0,w,h);
   hist=normalizeChartRows(hist);pred=normalizeForecast(pred);
   const live=Number.isFinite(Number(liveQuote?.price))?Number(liveQuote.price):null;
-  const values=hist.flatMap(v=>[v.low,v.high,v.open,v.close]).concat(pred.map(v=>v.close));
+  const values=[];
+  hist.forEach(v=>{[v.open,v.high,v.low,v.close].forEach(x=>{if(Number.isFinite(x))values.push(x);});});
+  pred.forEach(v=>{if(Number.isFinite(v.close))values.push(v.close);});
   if(live!==null)values.push(live);
-  const finite=values.filter(Number.isFinite);
-  if(!finite.length){
-    ctx.fillStyle="#778296";ctx.font="12px Inter, sans-serif";ctx.fillText("No valid OHLC data available",16,28);
-    chartState={...chartState,hist,pred,live,mn:0,mx:1,pad:44,w,h,total:Math.max(0,hist.length+pred.length),hoverIndex:-1};
-    return;
-  }
-  let mn=Math.min(...finite),mx=Math.max(...finite),span=mx-mn;
-  if(!Number.isFinite(span)||span<=0)span=Math.max(Math.abs(mx)*.01,1);
+  let mn=values.length?Math.min(...values):0,mx=values.length?Math.max(...values):1;
+  if(!Number.isFinite(mn)||!Number.isFinite(mx)){mn=0;mx=1;}
+  let span=mx-mn;if(!Number.isFinite(span)||span<=0)span=Math.max(Math.abs(mx)*.01,1);
   mn-=span*.07;mx+=span*.07;
-  const pad=44,volumeH=42,priceBottom=h-pad-volumeH;
+  const pad=48,volumeH=48,priceBottom=Math.max(pad+30,h-pad-volumeH);
   const total=Math.max(1,hist.length+pred.length),step=(w-pad*2)/Math.max(1,total-1);
-  chartState={hist,pred,live,mn,mx,pad,w,h,total,step,priceBottom,hoverIndex:chartState.hoverIndex??-1};
+  chartState={hist,pred,live,mn,mx,pad,w,h,total,step,priceBottom,hoverIndex:Number.isInteger(chartState.hoverIndex)?chartState.hoverIndex:-1};
   const X=i=>pad+i*step,Y=v=>priceBottom-(v-mn)/(mx-mn)*(priceBottom-pad);
-  ctx.fillStyle="#0b0f15";ctx.fillRect(0,0,w,h);ctx.font="10px Inter, sans-serif";
+  ctx.fillStyle="#0b0f15";ctx.fillRect(0,0,w,h);
+  ctx.font="10px Inter, sans-serif";
   ctx.strokeStyle="#202733";ctx.lineWidth=1;
   for(let i=0;i<5;i++){
     const yy=pad+i*(priceBottom-pad)/4,val=mx-(mx-mn)*i/4;
+    if(!Number.isFinite(yy)||!Number.isFinite(val))continue;
     ctx.beginPath();ctx.moveTo(pad,yy);ctx.lineTo(w-pad,yy);ctx.stroke();
-    ctx.fillStyle="#778296";ctx.fillText(fmt(val),6,yy+3);
+    ctx.fillStyle="#8993a4";ctx.fillText(fmt(val),7,yy+3);
   }
   const ticks=Math.min(6,hist.length);
   for(let k=0;k<ticks;k++){
     const idx=Math.round(k*(hist.length-1)/Math.max(1,ticks-1)),xx=X(idx);
-    ctx.fillStyle="#778296";ctx.fillText(shortDate(hist[idx]?.date||""),Math.max(pad,Math.min(w-pad-38,xx-20)),h-8);
+    ctx.fillStyle="#778296";ctx.fillText(shortDate(hist[idx]?.date||""),Math.max(pad,Math.min(w-pad-40,xx-20)),h-8);
   }
   const type=$("chartType").value;
   if(type==="candles"){
-    const cw=Math.max(2,Math.min(12,step*.62));
+    const cw=Math.max(2,Math.min(12,Math.abs(step)*.62));
     hist.forEach((v,i)=>{
-      const o=v.open,hv=v.high,lo=v.low,cl=v.close,up=cl>=o;
-      ctx.strokeStyle=up?"#79e38b":"#ff7f7f";ctx.fillStyle=up?"#79e38b":"#ff7f7f";
-      ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(X(i),Y(hv));ctx.lineTo(X(i),Y(lo));ctx.stroke();
-      const top=Y(Math.max(o,cl)),bot=Y(Math.min(o,cl));ctx.fillRect(X(i)-cw/2,top,cw,Math.max(1,bot-top));
+      if(![v.open,v.high,v.low,v.close].every(Number.isFinite))return;
+      const up=v.close>=v.open;
+      ctx.strokeStyle=up?"#79e38b":"#ff7f7f";ctx.fillStyle=up?"#79e38b":"#ff7f7f";ctx.lineWidth=1;
+      ctx.beginPath();ctx.moveTo(X(i),Y(v.high));ctx.lineTo(X(i),Y(v.low));ctx.stroke();
+      const top=Y(Math.max(v.open,v.close)),bot=Y(Math.min(v.open,v.close));
+      ctx.fillRect(X(i)-cw/2,top,cw,Math.max(1,bot-top));
     });
   }else{
     ctx.strokeStyle="#e9edf3";ctx.lineWidth=2;ctx.beginPath();
-    hist.forEach((v,i)=>i?ctx.lineTo(X(i),Y(v.close)):ctx.moveTo(X(i),Y(v.close)));ctx.stroke();
+    hist.forEach((v,i)=>{if(!Number.isFinite(v.close))return;i?ctx.lineTo(X(i),Y(v.close)):ctx.moveTo(X(i),Y(v.close));});ctx.stroke();
     if(type==="area"&&hist.length){
       ctx.lineTo(X(hist.length-1),priceBottom);ctx.lineTo(X(0),priceBottom);ctx.closePath();
       ctx.globalAlpha=.10;ctx.fillStyle="#e9edf3";ctx.fill();ctx.globalAlpha=1;
     }
   }
-  if(pred.length){
+  if(pred.length&&hist.length){
     ctx.strokeStyle="#a9ff6b";ctx.lineWidth=2;ctx.setLineDash([6,5]);ctx.beginPath();
-    ctx.moveTo(X(Math.max(0,hist.length-1)),Y(hist.at(-1).close));
+    ctx.moveTo(X(hist.length-1),Y(hist.at(-1).close));
     pred.forEach((v,j)=>ctx.lineTo(X(hist.length+j),Y(v.close)));
     ctx.stroke();ctx.setLineDash([]);
   }
   const maxVol=Math.max(1,...hist.map(v=>Number.isFinite(v.volume)?v.volume:0));
-  const volTop=priceBottom+7,volBottom=h-pad-19;
+  const volTop=priceBottom+8,volBottom=h-pad-18;
   hist.forEach((v,i)=>{
-    const vh=(v.volume/maxVol)*Math.max(2,volBottom-volTop),cw=Math.max(2,Math.min(10,step*.7));
+    const vh=(v.volume/maxVol)*Math.max(2,volBottom-volTop),cw=Math.max(2,Math.min(10,Math.abs(step)*.7));
     ctx.fillStyle=v.close>=v.open?"#79e38b66":"#ff7f7f66";ctx.fillRect(X(i)-cw/2,volBottom-vh,cw,vh);
   });
   ctx.fillStyle="#586476";ctx.font="8px Inter, sans-serif";ctx.fillText("VOLUME",pad,volTop+9);
-  if(live!==null){
-    const lx=X(Math.max(0,hist.length-1)),ly=Y(live);
-    ctx.strokeStyle="#5bd6ff";ctx.lineWidth=1;ctx.setLineDash([3,3]);ctx.beginPath();ctx.moveTo(pad,ly);ctx.lineTo(w-pad,ly);ctx.stroke();ctx.setLineDash([]);
-    ctx.fillStyle="#5bd6ff";ctx.beginPath();ctx.arc(lx,ly,4,0,Math.PI*2);ctx.fill();
-    ctx.font="9px Inter, sans-serif";ctx.fillText("LIVE "+fmt(live),Math.max(pad,w-pad-72),Math.max(pad+10,ly-7));
+  if(live!==null&&hist.length){
+    const lx=X(hist.length-1),ly=Y(live);
+    if(Number.isFinite(ly)){
+      ctx.strokeStyle="#5bd6ff";ctx.lineWidth=1;ctx.setLineDash([3,3]);ctx.beginPath();ctx.moveTo(pad,ly);ctx.lineTo(w-pad,ly);ctx.stroke();ctx.setLineDash([]);
+      ctx.fillStyle="#5bd6ff";ctx.beginPath();ctx.arc(lx,ly,4,0,Math.PI*2);ctx.fill();
+      ctx.font="9px Inter, sans-serif";ctx.fillText("LIVE "+fmt(live),Math.max(pad,w-pad-72),Math.max(pad+10,ly-7));
+    }
   }
-  if(Number.isInteger(chartState.hoverIndex)&&chartState.hoverIndex>=0&&chartState.hoverIndex<hist.length){
-    const i=chartState.hoverIndex,v=hist[i],xx=X(i),yy=Y(v.close);
+  const hi=chartState.hoverIndex;
+  if(Number.isInteger(hi)&&hi>=0&&hi<hist.length){
+    const v=hist[hi],xx=X(hi),yy=Y(v.close);
     ctx.strokeStyle="#66738488";ctx.lineWidth=1;ctx.setLineDash([2,3]);
     ctx.beginPath();ctx.moveTo(xx,pad);ctx.lineTo(xx,priceBottom);ctx.stroke();
     ctx.beginPath();ctx.moveTo(pad,yy);ctx.lineTo(w-pad,yy);ctx.stroke();ctx.setLineDash([]);
     ctx.fillStyle="#e9edf3";ctx.beginPath();ctx.arc(xx,yy,3,0,Math.PI*2);ctx.fill();
   }
-}
-function shortDate(s){const d=new Date(s+"T00:00:00");return Number.isNaN(d.getTime())?s.slice(0,10):d.toLocaleDateString(undefined,{day:"2-digit",month:"short"});}
+}function shortDate(s){const d=new Date(s+"T00:00:00");return Number.isNaN(d.getTime())?s.slice(0,10):d.toLocaleDateString(undefined,{day:"2-digit",month:"short"});}
 function chartHover(e){
   if(!chartState.hist.length)return;
   const c=$("chart"),r=c.getBoundingClientRect(),px=e.clientX-r.left,pad=chartState.pad,step=chartState.step||((chartState.w-pad*2)/Math.max(1,chartState.total-1));
