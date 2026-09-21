@@ -1,6 +1,8 @@
 const $=id=>document.getElementById(id);
 let rows=[],autoPayload=null,dataSource="AUTO",activeSymbol=localStorage.getItem("kronos-symbol")||"RELIANCE.NS";
 const LIVE_REFRESH_MS=15000;
+const MARKET_REFRESH_MS=600000; // refresh the generated market/Kronos dataset every 10 minutes
+let lastMarketSyncAt=0,marketRefreshBusy=false;
 let liveQuote=null,btcSocket=null;
 
 $("symbolInput").value=activeSymbol;
@@ -40,6 +42,7 @@ $("chart").addEventListener("pointerleave",()=>{chartState.hoverIndex=-1; $("cha
 $("chart").addEventListener("wheel",chartWheel,{passive:false});
 $("symbolInput").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();loadMarket();}});
 setInterval(()=>{if(!document.hidden && dataSource==="AUTO") refreshLiveQuote();},LIVE_REFRESH_MS);
+setInterval(()=>{if(!document.hidden && dataSource==="AUTO") refreshMarketData();},MARKET_REFRESH_MS);
 window.addEventListener("beforeunload",()=>{if(btcSocket)btcSocket.close();});
 ["dragenter","dragover"].forEach(x=>$("drop").addEventListener(x,e=>{e.preventDefault();$("drop").classList.add("drag");}));
 ["dragleave","drop"].forEach(x=>$("drop").addEventListener(x,e=>{e.preventDefault();$("drop").classList.remove("drag");}));
@@ -103,9 +106,57 @@ async function refreshLiveQuote(){
 }
 
 async function loadPayload(){
- const r=await fetch("data/market.json?"+Date.now(),{cache:"no-store"});
- if(!r.ok)throw Error("market dataset unavailable");
- return await r.json();
+ const stamp=Date.now();
+ const sources=[
+   "https://raw.githubusercontent.com/oms733411-commits/my-app/main/web/data/market.json?ts="+stamp,
+   "data/market.json?ts="+stamp
+ ];
+ let lastError=null;
+ for(const url of sources){
+   try{
+     const r=await fetch(url,{cache:"no-store"});
+     if(!r.ok)throw Error("HTTP "+r.status);
+     const data=await r.json();
+     if(data?.symbols && typeof data.symbols==="object")return data;
+   }catch(e){lastError=e;}
+ }
+ throw lastError||Error("market dataset unavailable");
+}
+async function refreshMarketData(){
+ if(marketRefreshBusy||dataSource!=="AUTO")return;
+ marketRefreshBusy=true;
+ const symbolAtStart=activeSymbol;
+ const modeAtStart=$("interval")?.value||"1d";
+ const rangeAtStart=$("range")?.value||"252";
+ const intraRangeAtStart=$("intradayRange")?.value||"1d";
+ try{
+   const fresh=await loadPayload();
+   if(dataSource!=="AUTO"||activeSymbol!==symbolAtStart)return;
+   const item=fresh.symbols?.[symbolAtStart];
+   if(!item)throw Error("Ticker not in refreshed dataset");
+   autoPayload=fresh;
+   rows=normalizeChartRows(item.history);
+   lastMarketSyncAt=Date.now();
+   if(modeAtStart==="1d"){
+     $("interval").value="1d";
+     $("range").value=rangeAtStart;
+     syncTimeframeButtons();
+     render();
+   }else{
+     $("interval").value=modeAtStart;
+     syncTimeframeButtons();
+     $("intradayRange").value=intraRangeAtStart;
+     await loadChartMode();
+   }
+   if(dataSource==="AUTO"&&activeSymbol===symbolAtStart){
+     setStatus("AUTO-REFRESHED • "+(item.last_date||"latest"),true);
+     refreshLiveQuote();
+   }
+ }catch(e){
+   console.warn("10-minute market refresh failed",e);
+ }finally{
+   marketRefreshBusy=false;
+ }
 }
 let chartLoadToken=0, marketLoadToken=0, liveQuoteToken=0, marketAbort=null, intradayAbort=null;
 async function loadChartMode(){
