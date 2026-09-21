@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#07090d"><meta name="description" content="Kronos AI — Kronos-base financial time-series forecasting workspace">
+<title>Kronos AI — Kronos-base</title>
+<link rel="manifest" href="manifest.json"><link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="app-shell">
+<header class="topbar">
+  <div class="brand"><div class="brand-mark">K</div><div><b>KRONOS</b><span>AI MARKET INTELLIGENCE • BASE</span></div></div>
+  <div class="status"><i id="statusDot"></i><span id="statusText">LOADING ENGINE</span></div>
+</header>
+
+<main>
+<section class="hero">
+  <div><p class="eyebrow">FORECAST • BACKTEST • ANALYZE</p><h1>See the market<br><em>before the move.</em></h1>
+  <p class="sub">Automatic market data is the default. CSV and chart screenshots are optional. Forecasts are generated from the original open-source Kronos-base model.</p></div>
+  <div class="hero-actions">
+    <div class="ticker"><input id="symbolInput" value="RELIANCE.NS" aria-label="Ticker symbol" placeholder="Ticker e.g. AAPL"><button class="primary" id="refreshBtn" onclick="loadMarket()">Refresh</button></div>
+    <button class="ghost" onclick="document.getElementById('csv').click()">Upload CSV</button>
+  </div>
+</section>
+
+<section class="quick-grid">
+ <div class="card mini"><span class="label">CURRENT / LAST PRICE</span><b id="lastMini">—</b><small id="lastDate">—</small></div>
+ <div class="card mini"><span class="label">FORECAST</span><b id="forecastMini">—</b><small id="forecastPct">—</small></div>
+ <div class="card mini"><span class="label">DIRECTION</span><b id="directionMini">—</b><small id="confidenceMini">—</small></div>
+ <div class="card mini"><span class="label">DATA</span><b id="dataMini">—</b><small id="updatedMini">—</small></div>
+</section>
+
+<section class="grid">
+<div class="card chart-card">
+ <div class="card-head"><div><span class="label">PRICE FORECAST</span><h2 id="symbol">RELIANCE.NS • 1D</h2></div>
+ <div class="controls"><div class="timeframe-group" aria-label="Chart timeframe"><button type="button" class="tf-btn active" data-tf="1d">1D</button><button type="button" class="tf-btn" data-tf="5m">5m</button><button type="button" class="tf-btn" data-tf="15m">15m</button><button type="button" class="tf-btn" data-tf="1h">1H</button></div><select id="interval" aria-label="Candle interval" class="advanced-control"><option value="1d" selected>Daily</option><option value="5m">5 min</option><option value="15m">15 min</option><option value="1h">1 hour</option></select><select id="intradayRange" aria-label="Intraday range" class="advanced-control"><option value="1d" selected>1 Day</option><option value="5d">5 Days</option><option value="1mo">1 Month</option></select><input id="intradayDate" class="advanced-control date-control" type="date" aria-label="Choose intraday day" title="Choose a particular trading day"><select id="chartType" aria-label="Chart type"><option value="candles" selected>Candles</option><option value="line">Line</option><option value="area">Area</option></select><select id="range" aria-label="Daily chart range"><option value="5">1W</option><option value="22">1M</option><option value="66">3M</option><option value="132">6M</option><option value="252" selected>1Y</option><option value="400">Max</option></select><select id="horizon" aria-label="Forecast horizon"><option value="5">5 sessions</option><option value="10">10 sessions</option><option value="20">20 sessions</option><option value="30">30 sessions</option></select></div></div>
+ <div class="chart-wrap"><canvas id="chart"></canvas><div id="chartTip" class="chart-tip hidden"></div></div>
+ <div class="chart-footer"><div class="legend"><span><i class="actual"></i>Actual</span><span><i class="forecast"></i>Kronos forecast</span><span><i class="live"></i>Live</span></div><span id="chartHint">Hover a candle/point for date + OHLC</span></div>
+</div>
+<aside class="side">
+ <div class="card signal"><span class="label">MODEL SIGNAL</span><div class="signal-row"><strong id="direction">—</strong><span id="confidence">Awaiting data</span></div><p id="signalText">Select a market to load the latest model result.</p><div class="risk-note">Forecasts are model outputs, not guaranteed returns.</div></div>
+ <div class="card metrics"><span class="label">MODEL SNAPSHOT</span>
+  <div class="metric"><span>Last close</span><b id="last">—</b></div><div class="metric"><span>Forecast end</span><b id="end">—</b></div><div class="metric"><span>Horizon</span><b id="horizonOut">5 sessions</b></div><div class="metric"><span>Model</span><b>Kronos-base</b></div>
+ </div>
+</aside>
+</section>
+
+<section class="card market-strip"><div><span class="label">MARKET UNIVERSE</span><h2>Quick access</h2></div><div id="symbolChips" class="chips"></div></section>
+
+<section class="lower">
+<div class="card upload">
+ <span class="label">OPTIONAL DATA INPUT</span><h2>Use your own history.</h2><p>CSV is only needed for custom data. Automatic market data remains the default.</p>
+ <div class="drop" id="drop" onclick="document.getElementById('csv').click()"><div class="upload-icon">↑</div><b>Drop OHLCV CSV</b><span>or click to browse</span></div>
+ <input id="csv" type="file" accept=".csv,text/csv" hidden>
+ <label class="screenshot">Add chart screenshot <input id="shot" type="file" accept="image/*"></label><small class="muted">Free on-device OCR reads visible text such as ticker, timeframe and price labels. It does not invent candle data.</small>
+ <div id="shotPreview" class="shot-preview hidden"></div>
+</div>
+
+<div class="card backtest">
+ <div class="card-head"><div><span class="label">ROLLING BACKTEST</span><h2>Kronos vs actual</h2></div><span class="pill" id="btWindows">—</span></div>
+ <div class="bars"><div><span>MAE</span><div class="bar"><i id="maeBar"></i></div><b id="mae">—</b></div>
+ <div><span>RMSE</span><div class="bar"><i id="rmseBar"></i></div><b id="rmse">—</b></div>
+ <div><span>MAPE</span><div class="bar"><i id="mapeBar"></i></div><b id="mape">—</b></div>
+ <div><span>Direction</span><div class="bar"><i id="dirBar"></i></div><b id="dir">—</b></div></div>
+ <div class="backtest-chart-wrap"><canvas id="backtestChart" aria-label="Actual versus Kronos backtest chart"></canvas></div>
+ <p class="muted" id="backtestNote">Rolling out-of-sample metrics are generated from historical windows. No future observations are used in a prediction window.</p>
+</div>
+</section>
+
+<section class="card details">
+ <div class="detail"><span class="label">MODEL</span><b>NeoQuasar / Kronos-base</b><p>102.3M parameters • 512-token context • original tokenizer + predictor.</p></div>
+ <div class="detail"><span class="label">DATA MODE</span><b id="dataMode">Automatic</b><p id="dataSource">Latest generated OHLCV dataset.</p></div>
+ <div class="detail"><span class="label">PRIVACY</span><b>Browser-first</b><p>No account or personal profile is required. Custom CSV stays in your browser.</p></div>
+</section>
+</main>
+<footer>KRONOS AI <span>•</span> Open-source model workspace <span>•</span> Forecasts are informational only</footer>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+<script src="base-boot.js?v=20260921-1"></script>
+<script src="app.js?v=20260921-16"></script>
+</body></html>
