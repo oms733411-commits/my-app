@@ -249,52 +249,63 @@ async function loadChartMode(){
     if(token!==chartLoadToken)return;
     console.error("Intraday load failed",e);
     chartState.intraday=false;
-    setStatus("INTRADAY ERROR • "+(e?.message||"FEED UNAVAILABLE"),false);
+    // Never blank a working chart just because an intraday provider failed.
+    if(rows.length){
+      $("interval").value="1d";
+      syncTimeframeButtons();
+      render();
+      setStatus("INTRADAY UNAVAILABLE • DAILY GRAPH KEPT",false);
+    }else{
+      setStatus("INTRADAY ERROR • "+(e?.message||"FEED UNAVAILABLE"),false);
+    }
   }
 }
-async function fetchIntraday(symbol,interval,range,signal){
-  // Prefer the freshest browser feed. If the provider blocks the browser,
-  // fall back to the scheduled GitHub/Kronos dataset.
-  let liveError=null;
-  if(symbol==="BTC-USD"&&window.fetch){
+async function fetchYahooChart(symbol,interval,range,signal){
+  const target="https://query1.finance.yahoo.com/v8/finance/chart/"+encodeURIComponent(symbol)+"?interval="+encodeURIComponent(interval)+"&range="+encodeURIComponent(range);
+  const providers=[
+    target,
+    "https://api.allorigins.win/raw?url="+encodeURIComponent(target),
+    "https://corsproxy.io/?url="+encodeURIComponent(target)
+  ];
+  let lastError=null;
+  for(const url of providers){
     try{
-      const r=await fetch("https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval="+encodeURIComponent(interval)+"&limit="+(range==="1d"?288:range==="5d"?1000:1000),{cache:"no-store",signal});
+      const r=await fetchWithTimeout(url,{cache:"no-store",signal},12000);
+      if(!r.ok)throw Error("HTTP "+r.status);
+      const j=await r.json(),res=j.chart?.result?.[0];
+      if(!res)throw Error("no Yahoo chart result");
+      const q=res.indicators?.quote?.[0]||{},ts=res.timestamp||[];
+      const live=ts.map((t,i)=>({date:new Date(t*1000).toISOString(),open:+q.open?.[i],high:+q.high?.[i],low:+q.low?.[i],close:+q.close?.[i],volume:+q.volume?.[i]||0}))
+        .filter(v=>v.date&&[v.open,v.high,v.low,v.close].every(Number.isFinite));
+      if(live.length)return live;
+    }catch(e){
+      if(e?.name==="AbortError")throw e;
+      lastError=e;
+    }
+  }
+  throw lastError||Error("Yahoo market feed unavailable");
+}
+async function fetchIntraday(symbol,interval,range,signal){
+  let liveError=null;
+  if(symbol==="BTC-USD"){
+    try{
+      const r=await fetchWithTimeout("https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval="+encodeURIComponent(interval)+"&limit="+(range==="1d"?288:1000),{cache:"no-store",signal},12000);
       if(r.ok){
         const a=await r.json();
         const live=a.map(v=>({date:new Date(+v[0]).toISOString(),open:+v[1],high:+v[2],low:+v[3],close:+v[4],volume:+v[5]}))
           .filter(v=>v.date&&[v.open,v.high,v.low,v.close].every(Number.isFinite));
         if(live.length)return live;
       }
-    }catch(e){liveError=e;}
-  }else{
-    try{
-      const url="https://query1.finance.yahoo.com/v8/finance/chart/"+encodeURIComponent(symbol)+"?interval="+encodeURIComponent(interval)+"&range="+encodeURIComponent(range);
-      const r=await fetch(url,{cache:"no-store",signal});
-      if(!r.ok)throw Error("HTTP "+r.status);
-      const j=await r.json(),res=j.chart?.result?.[0];
-      if(!res)throw Error("no intraday result");
-      const q=res.indicators?.quote?.[0]||{},ts=res.timestamp||[];
-      const live=ts.map((t,i)=>({date:new Date(t*1000).toISOString(),open:+q.open?.[i],high:+q.high?.[i],low:+q.low?.[i],close:+q.close?.[i],volume:+q.volume?.[i]||0}))
-        .filter(v=>v.date&&[v.open,v.high,v.low,v.close].every(Number.isFinite));
-      if(live.length)return live;
-    }catch(e){liveError=e;}
+    }catch(e){if(e?.name==="AbortError")throw e;liveError=e;}
   }
-
+  try{return await fetchYahooChart(symbol,interval,range,signal);}
+  catch(e){if(e?.name==="AbortError")throw e;liveError=e;}
   const pack=autoPayload?.symbols?.[symbol]?.intraday?.[interval];
-  if(Array.isArray(pack?.history) && pack.history.length){
-    return normalizeChartRows(pack.history).slice(-1000);
-  }
+  if(Array.isArray(pack?.history) && pack.history.length)return normalizeChartRows(pack.history).slice(-1000);
   throw liveError||Error("intraday unavailable");
 }
 async function fetchDailyFallback(symbol){
-  const url="https://query1.finance.yahoo.com/v8/finance/chart/"+encodeURIComponent(symbol)+"?interval=1d&range=2y";
-  const r=await fetchWithTimeout(url,{cache:"no-store"},10000);
-  if(!r.ok)throw Error("daily market feed unavailable");
-  const j=await r.json(),res=j.chart?.result?.[0];
-  if(!res)throw Error("no daily market result");
-  const q=res.indicators?.quote?.[0]||{},ts=res.timestamp||[];
-  return ts.map((t,i)=>({date:new Date(t*1000).toISOString(),open:+q.open?.[i],high:+q.high?.[i],low:+q.low?.[i],close:+q.close?.[i],volume:+q.volume?.[i]||0}))
-    .filter(v=>v.date&&[v.open,v.high,v.low,v.close].every(Number.isFinite));
+  return fetchYahooChart(symbol,"1d","2y");
 }
 async function loadMarket(){
  const s=$("symbolInput").value.trim().toUpperCase();if(!s)return;
