@@ -8,6 +8,8 @@ $("csv").addEventListener("change",e=>readCSV(e.target.files[0]));
 $("shot").addEventListener("change",e=>showScreenshot(e.target.files[0]));
 $("horizon").addEventListener("change",()=>{if(rows.length)render();});
 $("range").addEventListener("change",()=>{if(rows.length)render();});
+$("interval").addEventListener("change",()=>loadChartMode());
+$("intradayRange").addEventListener("change",()=>loadChartMode());
 $("chartType").addEventListener("change",()=>{if(rows.length)render();});
 $("chart").addEventListener("mousemove",chartHover);
 $("chart").addEventListener("mouseleave",()=>{chartState.hoverIndex=-1; $("chartTip").classList.add("hidden"); renderChartOnly();});
@@ -78,6 +80,54 @@ async function loadPayload(){
  if(!r.ok)throw Error("market dataset unavailable");
  return await r.json();
 }
+async function loadChartMode(){
+  const mode=$("interval")?.value||"1d";
+  if(mode==="1d"){ render(); return; }
+  const range=$("intradayRange")?.value||"1d";
+  setStatus("LOADING "+mode.toUpperCase()+" INTRADAY");
+  try{
+    const intraday=await fetchIntraday(activeSymbol,mode,range);
+    if(!intraday.length)throw Error("No intraday data");
+    chartState.intraday=true;
+    draw(intraday,[]);
+    $("symbol").textContent=activeSymbol+" • "+mode.toUpperCase();
+    $("last").textContent=fmt(intraday.at(-1).close);
+    $("lastMini").textContent=fmt(intraday.at(-1).close);
+    $("lastDate").textContent="INTRADAY • "+new Date(intraday.at(-1).date).toLocaleString();
+    $("dataMini").textContent="LIVE";
+    $("updatedMini").textContent="Free intraday feed";
+    $("horizonOut").textContent="—";
+    $("forecastMini").textContent="—";
+    $("forecastPct").textContent="Intraday chart";
+    $("end").textContent="—";
+    $("signalText").textContent="Intraday candles are live/latest available market data. Kronos forecasts remain generated on the daily OHLCV pipeline.";
+    $("confidence").textContent="Intraday view";
+    $("confidenceMini").textContent=mode.toUpperCase()+" candles";
+    $("direction").textContent="—"; $("directionMini").textContent="—";
+    clearBacktest("Intraday chart mode. Daily Kronos rolling backtest is shown only in daily mode.");
+    setStatus("INTRADAY READY",true);
+  }catch(e){
+    setStatus("INTRADAY FEED UNAVAILABLE",false);
+  }
+}
+async function fetchIntraday(symbol,interval,range){
+  if((symbol==="BTC-USD"||symbol==="ETH-USD")&&window.fetch){
+    const map={ "5m":"5m","15m":"15m","1h":"1h" };
+    const bin= symbol==="BTC-USD"?"BTCUSDT":"ETHUSDT";
+    const limit=range==="1d"?288:range==="5d"?1000:1000;
+    const r=await fetch("https://api.binance.com/api/v3/klines?symbol="+bin+"&interval="+map[interval]+"&limit="+limit,{cache:"no-store"});
+    if(r.ok){
+      const a=await r.json();
+      return a.map(v=>({date:new Date(+v[0]).toISOString(),open:+v[1],high:+v[2],low:+v[3],close:+v[4],volume:+v[5]})).filter(v=>[v.open,v.high,v.low,v.close].every(Number.isFinite));
+    }
+  }
+  const url="https://query1.finance.yahoo.com/v8/finance/chart/"+encodeURIComponent(symbol)+"?interval="+encodeURIComponent(interval)+"&range="+encodeURIComponent(range);
+  const r=await fetch(url,{cache:"no-store"}); if(!r.ok)throw Error("intraday unavailable");
+  const j=await r.json(),res=j.chart?.result?.[0]; if(!res)throw Error("no intraday result");
+  const q=res.indicators?.quote?.[0]||{},ts=res.timestamp||[];
+  return ts.map((t,i)=>({date:new Date(t*1000).toISOString(),open:+q.open?.[i],high:+q.high?.[i],low:+q.low?.[i],close:+q.close?.[i],volume:+q.volume?.[i]||0}))
+    .filter(v=>v.date&&[v.open,v.high,v.low,v.close].every(Number.isFinite));
+}
 async function loadMarket(){
  const s=$("symbolInput").value.trim().toUpperCase();if(!s)return;
  activeSymbol=s;localStorage.setItem("kronos-symbol",s);dataSource="AUTO";setBusy(true);setStatus("LOADING KRONOS DATA");
@@ -85,7 +135,7 @@ async function loadMarket(){
    autoPayload=await loadPayload();
    const item=autoPayload.symbols?.[s];
    if(!item)throw Error("Ticker not in generated universe");
-   rows=normalizeChartRows(item.history);
+   rows=normalizeChartRows(item.history); chartState.intraday=false;
    render();setStatus("KRONOS READY • "+item.last_date,true);refreshLiveQuote();
  }catch(e){
    setStatus("TICKER NOT AVAILABLE",false);
@@ -95,6 +145,7 @@ async function loadMarket(){
 
 function render(){
  const s=activeSymbol,item=autoPayload?.symbols?.[s],n=+$("horizon").value,range=+$("range").value;
+ if(($("interval")?.value||"1d")!=="1d"){ loadChartMode(); return; }
  $("symbol").textContent=(dataSource==="CSV"?"CUSTOM • ":"")+s+" • DAILY";
  const hist=normalizeChartRows(rows).slice(-Math.min(range,rows.length));if(!hist.length){throw Error("No valid OHLC history");}const last=hist.at(-1).close;
  $("last").textContent=fmt(last);$("lastMini").textContent=fmt(last);$("lastDate").textContent="Latest available • "+(item?.last_date||hist.at(-1).date);
@@ -124,7 +175,7 @@ function render(){
    clearBacktest("Custom CSV loaded. Automatic model backtests are kept separate from custom browser data.");
  }
 }
-let chartState={hist:[],pred:[],live:null,mn:0,mx:1,pad:44,w:0,h:0,total:0,hoverIndex:-1};
+let chartState={hist:[],pred:[],live:null,mn:0,mx:1,pad:44,w:0,h:0,total:0,hoverIndex:-1,intraday:false};
 function normalizeChartRows(list){
   return (Array.isArray(list)?list:[]).map(v=>({
     date:String(v?.date||""),
@@ -146,6 +197,7 @@ function draw(hist,pred){
   c.width=Math.round(w*dpr);c.height=Math.round(h*dpr);ctx.setTransform(dpr,0,0,dpr,0,0);ctx.clearRect(0,0,w,h);
   hist=normalizeChartRows(hist);pred=normalizeForecast(pred);
   const live=Number.isFinite(Number(liveQuote?.price))?Number(liveQuote.price):null;
+  chartState.intraday = chartState.intraday || (hist.length && String(hist[0].date).includes("T"));
   const values=[];
   hist.forEach(v=>{[v.open,v.high,v.low,v.close].forEach(x=>{if(Number.isFinite(x))values.push(x);});});
   pred.forEach(v=>{if(Number.isFinite(v.close))values.push(v.close);});
@@ -167,7 +219,7 @@ function draw(hist,pred){
     ctx.beginPath();ctx.moveTo(pad,yy);ctx.lineTo(w-pad,yy);ctx.stroke();
     ctx.fillStyle="#8993a4";ctx.fillText(fmt(val),7,yy+3);
   }
-  const ticks=Math.min(6,hist.length);
+  const ticks=Math.min(chartState.intraday?8:6,hist.length);
   for(let k=0;k<ticks;k++){
     const idx=Math.round(k*(hist.length-1)/Math.max(1,ticks-1)),xx=X(idx);
     ctx.fillStyle="#778296";ctx.fillText(shortDate(hist[idx]?.date||""),Math.max(pad,Math.min(w-pad-40,xx-20)),h-8);
@@ -220,7 +272,12 @@ function draw(hist,pred){
     ctx.beginPath();ctx.moveTo(pad,yy);ctx.lineTo(w-pad,yy);ctx.stroke();ctx.setLineDash([]);
     ctx.fillStyle="#e9edf3";ctx.beginPath();ctx.arc(xx,yy,3,0,Math.PI*2);ctx.fill();
   }
-}function shortDate(s){const d=new Date(s+"T00:00:00");return Number.isNaN(d.getTime())?s.slice(0,10):d.toLocaleDateString(undefined,{day:"2-digit",month:"short"});}
+}function shortDate(s){
+ const d=new Date(s);
+ if(Number.isNaN(d.getTime()))return String(s).slice(0,10);
+ if(chartState.intraday)return d.toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"});
+ return d.toLocaleDateString(undefined,{day:"2-digit",month:"short"});
+}
 function chartHover(e){
   if(!chartState.hist.length)return;
   const c=$("chart"),r=c.getBoundingClientRect(),px=e.clientX-r.left,pad=chartState.pad,step=chartState.step||((chartState.w-pad*2)/Math.max(1,chartState.total-1));
@@ -228,7 +285,7 @@ function chartHover(e){
   chartState.hoverIndex=i;renderChartOnly();
   const v=chartState.hist[i],tip=$("chartTip");if(!v)return;
   tip.classList.remove("hidden");
-  tip.innerHTML="<b>"+v.date+"</b><span>O "+fmt(v.open)+" · H "+fmt(v.high)+" · L "+fmt(v.low)+" · C "+fmt(v.close)+"</span><span>Volume "+Number(v.volume||0).toLocaleString()+"</span>";
+  tip.innerHTML="<b>"+new Date(v.date).toLocaleString()+"</b><span>O "+fmt(v.open)+" · H "+fmt(v.high)+" · L "+fmt(v.low)+" · C "+fmt(v.close)+"</span><span>Volume "+Number(v.volume||0).toLocaleString()+"</span>";
   tip.style.left=Math.min(Math.max(px+12,8),Math.max(8,c.clientWidth-205))+"px";
   tip.style.top=Math.max(8,e.clientY-r.top-58)+"px";
 }
