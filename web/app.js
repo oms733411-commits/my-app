@@ -285,6 +285,45 @@ async function fetchYahooChart(symbol,interval,range,signal){
   }
   throw lastError||Error("Yahoo market feed unavailable");
 }
+function githubDatasetSymbol(symbol){
+  // Public, read-only historical OHLCV mirror used only when the primary feed
+  // is unavailable. No prices are invented or generated in the browser.
+  return symbol==="RELIANCE.NS"||symbol==="INFY.NS";
+}
+async function fetchGithubCsv(symbol,kind,signal){
+  if(!githubDatasetSymbol(symbol))throw Error("no public fallback dataset for "+symbol);
+  const file=kind==="1d"?"1d.csv":kind==="15m"?"15m.csv":"1m.csv";
+  const url="https://raw.githubusercontent.com/scriptkidakash81/stocks-data/main/data/stocks/"+encodeURIComponent(symbol)+"/"+file;
+  const r=await fetchWithTimeout(url,{cache:"no-store",signal},20000);
+  if(!r.ok)throw Error("fallback dataset HTTP "+r.status);
+  const text=await r.text();
+  const lines=text.split(/\r?\n/);
+  const out=[];
+  // Keep parsing bounded for the large 1-minute file while retaining enough
+  // recent history for 1D/5D/1M chart ranges.
+  const from=Math.max(1,lines.length-(kind==="1m"?140000:80000));
+  for(let i=from;i<lines.length;i++){
+    const line=lines[i].trim(); if(!line)continue;
+    const p=line.split(",");
+    if(p.length<6)continue;
+    const date=p[0],open=+p[1],high=+p[2],low=+p[3],close=+p[4],volume=+p[5]||0;
+    if(date&&[open,high,low,close].every(Number.isFinite))out.push({date:new Date(date).toISOString(),open,high,low,close,volume});
+  }
+  if(!out.length)throw Error("fallback dataset empty");
+  return out;
+}
+function aggregateBars(source,minutes){
+  if(minutes===1)return source;
+  const buckets=new Map(),ms=minutes*60*1000;
+  for(const v of source){
+    const t=new Date(v.date).getTime();
+    const key=Math.floor(t/ms)*ms;
+    let b=buckets.get(key);
+    if(!b){b={date:new Date(key).toISOString(),open:v.open,high:v.high,low:v.low,close:v.close,volume:v.volume};buckets.set(key,b);}
+    else{b.high=Math.max(b.high,v.high);b.low=Math.min(b.low,v.low);b.close=v.close;b.volume+=v.volume;}
+  }
+  return [...buckets.values()].sort((a,b)=>new Date(a.date)-new Date(b.date));
+}
 async function fetchIntraday(symbol,interval,range,signal){
   let liveError=null;
   if(symbol==="BTC-USD"){
@@ -300,12 +339,29 @@ async function fetchIntraday(symbol,interval,range,signal){
   }
   try{return await fetchYahooChart(symbol,interval,range,signal);}
   catch(e){if(e?.name==="AbortError")throw e;liveError=e;}
+  try{
+    if(interval==="15m"){
+      return await fetchGithubCsv(symbol,"15m",signal);
+    }
+    if(interval==="5m"){
+      const one=await fetchGithubCsv(symbol,"1m",signal);
+      return aggregateBars(one,5);
+    }
+    if(interval==="1h"){
+      const fifteen=await fetchGithubCsv(symbol,"15m",signal);
+      return aggregateBars(fifteen,60);
+    }
+  }catch(e){if(e?.name==="AbortError")throw e;liveError=e;}
   const pack=autoPayload?.symbols?.[symbol]?.intraday?.[interval];
   if(Array.isArray(pack?.history) && pack.history.length)return normalizeChartRows(pack.history).slice(-1000);
   throw liveError||Error("intraday unavailable");
 }
 async function fetchDailyFallback(symbol){
-  return fetchYahooChart(symbol,"1d","2y");
+  try{return await fetchYahooChart(symbol,"1d","2y");}
+  catch(e){
+    if(e?.name==="AbortError")throw e;
+    return fetchGithubCsv(symbol,"1d",undefined);
+  }
 }
 async function loadMarket(){
  const s=$("symbolInput").value.trim().toUpperCase();if(!s)return;
