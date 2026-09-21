@@ -52,7 +52,7 @@
  <span class="label">OPTIONAL DATA INPUT</span><h2>Use your own history.</h2><p>CSV is only needed for custom data. Automatic market data remains the default.</p>
  <div class="drop" id="drop" onclick="document.getElementById('csv').click()"><div class="upload-icon">↑</div><b>Drop OHLCV CSV</b><span>or click to browse</span></div>
  <input id="csv" type="file" accept=".csv,text/csv" hidden>
- <label class="screenshot">Add chart screenshot <input id="shot" type="file" accept="image/*"></label>
+ <label class="screenshot">Add chart screenshot <input id="shot" type="file" accept="image/*"></label><small class="muted">Free on-device OCR reads visible text such as ticker, timeframe and price labels. It does not invent candle data.</small>
  <div id="shotPreview" class="shot-preview hidden"></div>
 </div>
 
@@ -75,5 +75,5 @@
 </main>
 <footer>KRONOS AI <span>•</span> Open-source model workspace <span>•</span> Forecasts are informational only</footer>
 </div>
-<script src="app.js?v=20260921-6"></script>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script><script src="app.js?v=20260921-7"></script>
 </body></html>
