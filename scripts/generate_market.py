@@ -40,7 +40,7 @@ LOOKBACK=400
 # pipeline stays within its time budget.
 INTRADAY_SYMBOLS={
     "RELIANCE.NS","TCS.NS","INFY.NS","HDFCBANK.NS","ICICIBANK.NS","SBIN.NS",
-    "BHARTIARTL.NS","ITC.NS","LT.NS","AAPL","MSFT","NVDA","TSLA","BTC-USD","ETH-USD"
+    "RELIANCE.NS","TCS.NS","INFY.NS","AAPL","MSFT","BTC-USD"
 }
 INTRADAY_CONFIG={
     "5m":{"period":"60d","pred_len":24,"history_bars":600},
