@@ -6,6 +6,9 @@ let lastMarketSyncAt=0,marketRefreshBusy=false;
 let liveQuote=null,btcSocket=null;
 
 $("symbolInput").value=activeSymbol;
+$("refreshBtn").addEventListener("click",()=>loadMarket());
+window.addEventListener("error",e=>{console.error(e.error||e.message);setStatus("APP ERROR • REFRESH TO RETRY",false);});
+window.addEventListener("unhandledrejection",e=>{console.error(e.reason);setStatus("APP ERROR • REFRESH TO RETRY",false);});
 $("csv").addEventListener("change",e=>readCSV(e.target.files[0]));
 $("shot").addEventListener("change",e=>showScreenshot(e.target.files[0]));
 $("horizon").addEventListener("change",()=>{if(rows.length)render();});
