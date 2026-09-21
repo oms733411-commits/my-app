@@ -8,8 +8,19 @@ $("csv").addEventListener("change",e=>readCSV(e.target.files[0]));
 $("shot").addEventListener("change",e=>showScreenshot(e.target.files[0]));
 $("horizon").addEventListener("change",()=>{if(rows.length)render();});
 $("range").addEventListener("change",()=>{if(rows.length)render();});
-$("interval").addEventListener("change",()=>loadChartMode());
+$("interval").addEventListener("change",()=>{syncTimeframeButtons();loadChartMode();});
 $("intradayRange").addEventListener("change",()=>loadChartMode());
+function syncTimeframeButtons(){
+  const mode=$("interval")?.value||"1d";
+  document.querySelectorAll(".tf-btn").forEach(b=>b.classList.toggle("active",b.dataset.tf===mode));
+}
+document.querySelectorAll(".tf-btn").forEach(b=>b.addEventListener("click",()=>{
+  const mode=b.dataset.tf||"1d";
+  $("interval").value=mode;
+  syncTimeframeButtons();
+  loadChartMode();
+}));
+syncTimeframeButtons();
 $("chartType").addEventListener("change",()=>{if(rows.length)render();});
 $("chart").addEventListener("mousemove",chartHover);
 $("chart").addEventListener("mouseleave",()=>{chartState.hoverIndex=-1; $("chartTip").classList.add("hidden"); renderChartOnly();});
