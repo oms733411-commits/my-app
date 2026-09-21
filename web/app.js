@@ -12,6 +12,7 @@ $("horizon").addEventListener("change",()=>{if(rows.length)render();});
 $("range").addEventListener("change",()=>{if(($("interval")?.value||"1d")!=="1d"){ $("intradayRange").value=$("range").value; loadChartMode(); } else if(rows.length)render();});
 $("interval").addEventListener("change",()=>{syncTimeframeButtons();loadChartMode();});
 $("intradayRange").addEventListener("change",()=>loadChartMode());
+$("intradayDate").addEventListener("change",()=>loadChartMode());
 function syncTimeframeButtons(){
   const mode=$("interval")?.value||"1d";
   document.querySelectorAll(".tf-btn").forEach(b=>b.classList.toggle("active",b.dataset.tf===mode));
@@ -26,6 +27,7 @@ function syncTimeframeButtons(){
   range.value=values.includes(current)?current:values[isIntraday?0:4];
   range.setAttribute("aria-label",isIntraday?"Intraday chart range":"Daily chart range");
   if($("intradayRange"))$("intradayRange").value=range.value;
+  if($("intradayDate"))$("intradayDate").style.display=isIntraday?"inline-block":"none";
 }
 document.querySelectorAll(".tf-btn").forEach(b=>b.addEventListener("click",()=>{
   const mode=b.dataset.tf||"1d";
@@ -181,7 +183,19 @@ async function loadChartMode(){
     if(!allIntraday.length)throw Error("No intraday data");
     const barsPerDay={"5m":78,"15m":26,"1h":7};
     const requestedDays=range==="1d"?1:range==="5d"?5:22;
-    const intraday=allIntraday.slice(-(barsPerDay[mode]||78)*requestedDays);
+    const selectedDate=$("intradayDate")?.value||"";
+    let intraday=allIntraday;
+    if(selectedDate){
+      const dayRows=allIntraday.filter(v=>String(v.date).slice(0,10)===selectedDate);
+      if(dayRows.length) intraday=dayRows;
+      else {
+        $("intradayDate").value="";
+        setStatus("SELECTED DAY NOT IN CURRENT FEED",false);
+        intraday=allIntraday.slice(-(barsPerDay[mode]||78)*requestedDays);
+      }
+    }else{
+      intraday=allIntraday.slice(-(barsPerDay[mode]||78)*requestedDays);
+    }
     chartState.intraday=true;
     const intradayPack=autoPayload?.symbols?.[symbolAtStart]?.intraday?.[mode];
     if(token!==chartLoadToken)return;
@@ -193,7 +207,7 @@ async function loadChartMode(){
     const pct=Number.isFinite(end)&&Number.isFinite(last)?(end/last-1)*100:null;
     const dir=pct===null?"—":pct>=0?"UP":"DOWN";
     draw(intraday,pred);
-    $("symbol").textContent=activeSymbol+" • "+mode.toUpperCase()+" • KRONOS";
+    $("symbol").textContent=activeSymbol+" • "+mode.toUpperCase()+" • "+(selectedDate||"LATEST")+" • KRONOS";
     $("chartHint").textContent="White = actual candles • Green dashed = original Kronos forecast";
     $("last").textContent=fmt(last);
     $("lastMini").textContent=fmt(last);
