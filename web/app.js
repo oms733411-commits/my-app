@@ -224,28 +224,38 @@ async function loadChartMode(){
   }
 }
 async function fetchIntraday(symbol,interval,range,signal){
-  // Prefer the generated GitHub dataset. This avoids browser CORS/provider failures.
+  // Prefer the freshest browser feed. If the provider blocks the browser,
+  // fall back to the scheduled GitHub/Kronos dataset.
+  let liveError=null;
+  if(symbol==="BTC-USD"&&window.fetch){
+    try{
+      const r=await fetch("https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval="+encodeURIComponent(interval)+"&limit="+(range==="1d"?288:range==="5d"?1000:1000),{cache:"no-store",signal});
+      if(r.ok){
+        const a=await r.json();
+        const live=a.map(v=>({date:new Date(+v[0]).toISOString(),open:+v[1],high:+v[2],low:+v[3],close:+v[4],volume:+v[5]}))
+          .filter(v=>v.date&&[v.open,v.high,v.low,v.close].every(Number.isFinite));
+        if(live.length)return live;
+      }
+    }catch(e){liveError=e;}
+  }else{
+    try{
+      const url="https://query1.finance.yahoo.com/v8/finance/chart/"+encodeURIComponent(symbol)+"?interval="+encodeURIComponent(interval)+"&range="+encodeURIComponent(range);
+      const r=await fetch(url,{cache:"no-store",signal});
+      if(!r.ok)throw Error("HTTP "+r.status);
+      const j=await r.json(),res=j.chart?.result?.[0];
+      if(!res)throw Error("no intraday result");
+      const q=res.indicators?.quote?.[0]||{},ts=res.timestamp||[];
+      const live=ts.map((t,i)=>({date:new Date(t*1000).toISOString(),open:+q.open?.[i],high:+q.high?.[i],low:+q.low?.[i],close:+q.close?.[i],volume:+q.volume?.[i]||0}))
+        .filter(v=>v.date&&[v.open,v.high,v.low,v.close].every(Number.isFinite));
+      if(live.length)return live;
+    }catch(e){liveError=e;}
+  }
+
   const pack=autoPayload?.symbols?.[symbol]?.intraday?.[interval];
   if(Array.isArray(pack?.history) && pack.history.length){
     return normalizeChartRows(pack.history).slice(-1000);
   }
-
-  if((symbol==="BTC-USD"||symbol==="ETH-USD")&&window.fetch){
-    const map={ "5m":"5m","15m":"15m","1h":"1h" };
-    const bin= symbol==="BTC-USD"?"BTCUSDT":"ETHUSDT";
-    const limit=range==="1d"?288:range==="5d"?1000:1000;
-    const r=await fetch("https://api.binance.com/api/v3/klines?symbol="+bin+"&interval="+map[interval]+"&limit="+limit,{cache:"no-store",signal});
-    if(r.ok){
-      const a=await r.json();
-      return a.map(v=>({date:new Date(+v[0]).toISOString(),open:+v[1],high:+v[2],low:+v[3],close:+v[4],volume:+v[5]})).filter(v=>[v.open,v.high,v.low,v.close].every(Number.isFinite));
-    }
-  }
-  const url="https://query1.finance.yahoo.com/v8/finance/chart/"+encodeURIComponent(symbol)+"?interval="+encodeURIComponent(interval)+"&range="+encodeURIComponent(range);
-  const r=await fetch(url,{cache:"no-store",signal}); if(!r.ok)throw Error("intraday unavailable");
-  const j=await r.json(),res=j.chart?.result?.[0]; if(!res)throw Error("no intraday result");
-  const q=res.indicators?.quote?.[0]||{},ts=res.timestamp||[];
-  return ts.map((t,i)=>({date:new Date(t*1000).toISOString(),open:+q.open?.[i],high:+q.high?.[i],low:+q.low?.[i],close:+q.close?.[i],volume:+q.volume?.[i]||0}))
-    .filter(v=>v.date&&[v.open,v.high,v.low,v.close].every(Number.isFinite));
+  throw liveError||Error("intraday unavailable");
 }
 async function fetchDailyFallback(symbol){
   const url="https://query1.finance.yahoo.com/v8/finance/chart/"+encodeURIComponent(symbol)+"?interval=1d&range=2y";
