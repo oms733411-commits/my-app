@@ -176,7 +176,7 @@ function draw(hist,pred){
   const type=$("chartType").value;
   if(type==="candles"){
     const cw=Math.max(2,Math.min(12,step*.62));
-    hist.forEach((v,i)=>{
+    hist.slice(viewStart,viewEnd).forEach((v,j)=>{const i=viewStart+j;
       const o=v.open,hv=v.high,lo=v.low,cl=v.close,up=cl>=o;
       ctx.strokeStyle=up?"#79e38b":"#ff7f7f";ctx.fillStyle=up?"#79e38b":"#ff7f7f";
       ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(X(i),Y(hv));ctx.lineTo(X(i),Y(lo));ctx.stroke();
@@ -236,6 +236,15 @@ function chartWheel(e){
   const pos=Math.max(0,opts.indexOf(current)),next=e.deltaY<0?Math.min(opts.length-1,pos+1):Math.max(0,pos-1);
   $("range").value=String(opts[next]);render();
 }
+
+function drawCurrentChart(){if(chartState.hist.length)draw(chartState.hist,chartState.pred,true);}
+function chartIndexFromX(px){const count=Math.max(1,chartState.end-chartState.start),plot=chartState.w-chartState.pad*2;return Math.max(chartState.start,Math.min(chartState.end-1,Math.round(chartState.start+(px-chartState.pad)*Math.max(1,count-1)/Math.max(1,plot))));}
+function chartWheel(e){e.preventDefault();const r=$("chart").getBoundingClientRect(),px=e.clientX-r.left,anchor=chartIndexFromX(px),count=Math.max(2,chartState.end-chartState.start),next=Math.max(20,Math.min(chartState.total,Math.round(count*(e.deltaY>0?1.18:.85))));let ns=Math.round(anchor-(anchor-chartState.start)*(next-1)/Math.max(1,count-1));ns=Math.max(0,Math.min(chartState.total-next,ns));chartState.start=ns;chartState.end=ns+next;drawCurrentChart();}
+function chartPointerDown(e){$("chart").setPointerCapture?.(e.pointerId);chartState.drag=true;chartState.lastX=e.clientX;}
+function chartPointerMove(e){if(chartState.drag){const dx=e.clientX-chartState.lastX,count=chartState.end-chartState.start,plot=chartState.w-chartState.pad*2,shift=Math.round(-dx*Math.max(1,count-1)/Math.max(1,plot));chartState.start=Math.max(0,Math.min(Math.max(0,chartState.total-count),chartState.start+shift));chartState.end=chartState.start+count;chartState.lastX=e.clientX;drawCurrentChart();}else{chartHover(e);}}
+function chartPointerUp(){chartState.drag=false;}
+function resetChartView(){chartState.start=0;chartState.end=chartState.total;chartState.hover=-1;drawCurrentChart();}
+
 function renderBacktest(bt){
  if(!bt)return clearBacktest("No rolling backtest is available for this symbol yet.");
  $("mae").textContent=fmt(bt.mae);$("rmse").textContent=fmt(bt.rmse);$("dir").textContent=Math.round(bt.direction)+"%";
