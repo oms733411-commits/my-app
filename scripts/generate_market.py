@@ -106,7 +106,7 @@ def load_symbol(symbol):
         return None
     need=["open","high","low","close","volume"]
     if not all(c in raw.columns for c in need): return None
-    raw=raw[need].dropna().copy()
+    raw=raw[need+["date"]].dropna().copy() if "date" in raw.columns else raw[need].dropna().copy()
     if "Date" in raw.columns: raw=raw.rename(columns={"Date":"date"})
     elif "Datetime" in raw.columns: raw=raw.rename(columns={"Datetime":"date"})
     elif "date" not in raw.columns:
@@ -233,7 +233,7 @@ def load_intraday(symbol, interval, period):
     if raw is None or raw.empty: return None
     need=["open","high","low","close","volume"]
     if not all(c in raw.columns for c in need): return None
-    raw=raw[need].dropna().copy()
+    raw=raw[need+["date"]].dropna().copy() if "date" in raw.columns else raw[need].dropna().copy()
     if "Datetime" in raw.columns: raw=raw.rename(columns={"Datetime":"date"})
     elif "Date" in raw.columns: raw=raw.rename(columns={"Date":"date"})
     elif "date" not in raw.columns:
