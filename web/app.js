@@ -530,6 +530,23 @@ function chartWheel(e){
   const pos=Math.max(0,opts.indexOf(current)),next=e.deltaY<0?Math.min(opts.length-1,pos+1):Math.max(0,pos-1);
   $("range").value=String(opts[next]);render();
 }
+function drawBacktestChart(points){
+ const c=$("backtestChart");if(!c)return;
+ const ctx=c.getContext("2d"),dpr=window.devicePixelRatio||1,r=c.getBoundingClientRect();
+ const w=Math.max(320,Math.floor(r.width||320)),h=Math.max(180,Math.floor(r.height||220));
+ c.width=Math.round(w*dpr);c.height=Math.round(h*dpr);ctx.setTransform(dpr,0,0,dpr,0,0);ctx.clearRect(0,0,w,h);
+ const p=(Array.isArray(points)?points:[]).filter(x=>Number.isFinite(Number(x.actual))&&Number.isFinite(Number(x.kronos)));
+ if(!p.length){ctx.fillStyle="#8993a4";ctx.font="12px Inter,sans-serif";ctx.fillText("Backtest graph will appear after the next generated dataset.",18,30);return;}
+ const vals=p.flatMap(x=>[+x.actual,+x.kronos]),mn=Math.min(...vals),mx=Math.max(...vals),span=Math.max(mx-mn,1),pad=34;
+ const X=i=>pad+i*(w-pad*2)/Math.max(1,p.length-1),Y=v=>h-30-(v-mn)/span*(h-58);
+ ctx.font="10px Inter,sans-serif";ctx.strokeStyle="#202733";
+ for(let k=0;k<4;k++){const y=20+k*(h-58)/3;ctx.beginPath();ctx.moveTo(pad,y);ctx.lineTo(w-pad,y);ctx.stroke();ctx.fillStyle="#8993a4";ctx.fillText(fmt(mx-(mx-mn)*k/3),4,y+3);}
+ const line=(key,label,dash)=>{ctx.strokeStyle=key==="actual"?"#e9edf3":"#a9ff6b";ctx.lineWidth=2;ctx.setLineDash(dash?[6,4]:[]);ctx.beginPath();p.forEach((v,i)=>i?ctx.lineTo(X(i),Y(+v[key])):ctx.moveTo(X(i),Y(+v[key])));ctx.stroke();ctx.setLineDash([]);};
+ line("actual","ACTUAL",false);line("kronos","KRONOS",true);
+ ctx.fillStyle="#e9edf3";ctx.fillText("ACTUAL",pad,14);ctx.fillStyle="#a9ff6b";ctx.fillText("KRONOS",pad+58,14);
+ ctx.fillStyle="#778296";ctx.fillText(new Date(p[0].date).toLocaleDateString(undefined,{day:"2-digit",month:"short"}),pad,h-8);
+ const end=p.at(-1);ctx.fillText(new Date(end.date).toLocaleDateString(undefined,{day:"2-digit",month:"short"}),Math.max(pad,w-pad-55),h-8);
+}
 function renderBacktest(bt){
  if(!bt)return clearBacktest("No rolling backtest is available for this symbol yet.");
  $("mae").textContent=fmt(bt.mae);$("rmse").textContent=fmt(bt.rmse);$("dir").textContent=Math.round(bt.direction)+"%";
@@ -538,9 +555,10 @@ function renderBacktest(bt){
  const last=rows.at(-1)?.close||1;
  $("maeBar").style.width=Math.min(100,Math.max(6,100/(1+bt.mae/last*20)))+"%";
  $("rmseBar").style.width=Math.min(100,Math.max(6,100/(1+bt.rmse/last*20)))+"%";
- $("backtestNote").textContent="Out-of-sample rolling test: each prediction window uses only history available before that window. Metrics are generated with the original Kronos-small model.";
+ drawBacktestChart(bt.points);
+ $("backtestNote").textContent="Out-of-sample rolling test: each prediction window uses only history available before that window. The graph shows the actual closes and Kronos predictions for those tested windows.";
 }
-function clearBacktest(note){["mae","rmse","dir"].forEach(id=>$(id).textContent="—");$("btWindows").textContent="—";$("maeBar").style.width="0%";$("rmseBar").style.width="0%";$("dirBar").style.width="0%";$("backtestNote").textContent=note;}
+function clearBacktest(note){["mae","rmse","dir"].forEach(id=>$(id).textContent="—");$("btWindows").textContent="—";$("maeBar").style.width="0%";$("rmseBar").style.width="0%";$("dirBar").style.width="0%";drawBacktestChart([]);$("backtestNote").textContent=note;}
 
 function readCSV(file){
  if(!file)return;
