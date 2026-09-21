@@ -109,12 +109,16 @@ async function loadChartMode(){
     chartState.intraday=true;
     const intradayPack=autoPayload?.symbols?.[activeSymbol]?.intraday?.[mode];
     const pred=normalizeForecast(intradayPack?.forecast||[]);
+    if(!pred.length){
+      throw Error("Kronos "+mode+" forecast is not available yet for "+activeSymbol+". Run market update first.");
+    }
     const last=intraday.at(-1).close;
     const end=pred.at(-1)?.close;
     const pct=Number.isFinite(end)&&Number.isFinite(last)?(end/last-1)*100:null;
     const dir=pct===null?"—":pct>=0?"UP":"DOWN";
     draw(intraday,pred);
     $("symbol").textContent=activeSymbol+" • "+mode.toUpperCase()+" • KRONOS";
+    $("chartHint").textContent="White = actual candles • Green dashed = original Kronos forecast";
     $("last").textContent=fmt(last);
     $("lastMini").textContent=fmt(last);
     $("lastDate").textContent="LIVE INTRADAY • "+new Date(intraday.at(-1).date).toLocaleString();
@@ -283,10 +287,21 @@ function draw(hist,pred){
     }
   }
   if(pred.length&&hist.length){
-    ctx.strokeStyle="#a9ff6b";ctx.lineWidth=2;ctx.setLineDash([6,5]);ctx.beginPath();
-    ctx.moveTo(X(hist.length-1),Y(hist.at(-1).close));
-    pred.forEach((v,j)=>ctx.lineTo(X(hist.length+j),Y(v.close)));
+    const forecastStart=hist.length-1;
+    ctx.strokeStyle="#a9ff6b";ctx.lineWidth=3;ctx.setLineDash([7,5]);ctx.beginPath();
+    ctx.moveTo(X(forecastStart),Y(hist.at(-1).close));
+    pred.forEach((v,j)=>{
+      const x=X(forecastStart+j+1);
+      if(Number.isFinite(x)&&Number.isFinite(v.close))ctx.lineTo(x,Y(v.close));
+    });
     ctx.stroke();ctx.setLineDash([]);
+    const lastPred=pred.at(-1);
+    const lx=X(forecastStart+pred.length);
+    const ly=Y(lastPred.close);
+    if(Number.isFinite(lx)&&Number.isFinite(ly)){
+      ctx.setLineDash([]);ctx.fillStyle="#a9ff6b";ctx.beginPath();ctx.arc(lx,ly,4,0,Math.PI*2);ctx.fill();
+      ctx.font="10px Inter, sans-serif";ctx.fillText("KRONOS",Math.max(pad,Math.min(w-pad-48,lx-24)),Math.max(pad+12,ly-8));
+    }
   }
   const maxVol=Math.max(1,...hist.map(v=>Number.isFinite(v.volume)?v.volume:0));
   const volTop=priceBottom+8,volBottom=h-pad-18;
