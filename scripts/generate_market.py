@@ -96,7 +96,7 @@ def flatten_yf_frame(raw, symbol):
 
 def load_symbol(symbol):
     try:
-        raw=yf.download(symbol,period="2y",interval="1d",auto_adjust=False,repair=True,progress=False,threads=False)
+        raw=yf.download(symbol,period="2y",interval="1d",auto_adjust=False,repair=False,progress=False,threads=False)
         raw=flatten_yf_frame(raw,symbol)
     except Exception as e:
         print("yfinance daily failed",symbol,repr(e)); raw=None
@@ -106,8 +106,13 @@ def load_symbol(symbol):
         return None
     need=["open","high","low","close","volume"]
     if not all(c in raw.columns for c in need): return None
-    raw=raw[need].dropna().reset_index()
+    raw=raw[need].dropna().copy()
     if "Date" in raw.columns: raw=raw.rename(columns={"Date":"date"})
+    elif "Datetime" in raw.columns: raw=raw.rename(columns={"Datetime":"date"})
+    elif "date" not in raw.columns:
+        raw=raw.reset_index()
+        idx_name=str(raw.columns[0]).lower()
+        if idx_name in ("date","datetime","index"): raw=raw.rename(columns={raw.columns[0]:"date"})
     raw["date"]=pd.to_datetime(raw["date"]).dt.tz_localize(None)
     return raw
 
@@ -228,9 +233,12 @@ def load_intraday(symbol, interval, period):
     if raw is None or raw.empty: return None
     need=["open","high","low","close","volume"]
     if not all(c in raw.columns for c in need): return None
-    raw=raw[need].dropna().reset_index()
-    ts_col="Datetime" if "Datetime" in raw.columns else ("Date" if "Date" in raw.columns else raw.columns[0])
-    raw=raw.rename(columns={ts_col:"date"})
+    raw=raw[need].dropna().copy()
+    if "Datetime" in raw.columns: raw=raw.rename(columns={"Datetime":"date"})
+    elif "Date" in raw.columns: raw=raw.rename(columns={"Date":"date"})
+    elif "date" not in raw.columns:
+        raw=raw.reset_index()
+        raw=raw.rename(columns={raw.columns[0]:"date"})
     raw["date"]=pd.to_datetime(raw["date"])
     if getattr(raw["date"].dt,"tz",None) is not None:
         raw["date"]=raw["date"].dt.tz_localize(None)
