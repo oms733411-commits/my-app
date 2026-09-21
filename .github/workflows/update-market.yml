@@ -5,6 +5,7 @@ on:
     paths:
       - ".github/workflows/update-market.yml"
       - "scripts/generate_market.py"
+      - "scripts/requirements.txt"
   schedule:
     - cron: "7/10 * * * *"
   workflow_dispatch:
