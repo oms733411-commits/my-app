@@ -290,11 +290,30 @@ async function loadMarket(){
  }catch(e){
    if(token!==marketLoadToken)return;
    if(e?.name==="AbortError")return;
-   console.error("Market load failed",e);
-   autoPayload=null;rows=[];
-   setStatus("TICKER NOT AVAILABLE",false);
-   $("symbol").textContent=s+" • UNAVAILABLE";
-   $("signalText").textContent="No automatic dataset is available for this ticker yet. Choose a supported market or upload a CSV.";
+   console.error("Generated market dataset load failed, trying direct daily feed",e);
+   // Fallback: keep the daily chart usable even when the scheduled GitHub dataset
+   // is temporarily unavailable or a symbol is missing from the generated payload.
+   try{
+     const fallback=await fetchDailyFallback(s);
+     if(token!==marketLoadToken)return;
+     if(!fallback.length)throw Error("No valid daily fallback rows");
+     autoPayload=null;
+     rows=fallback;
+     chartState.intraday=false;
+     $("symbol").textContent=s+" • DAILY • LIVE FEED";
+     render();
+     setStatus("LIVE FEED READY • KRONOS DATA UPDATING",true);
+     $("signalText").textContent="Live daily OHLC data is available now. The original Kronos forecast will return automatically when the generated market dataset is published.";
+     refreshLiveQuote();
+     return;
+   }catch(fallbackError){
+     if(token!==marketLoadToken)return;
+     console.error("Daily market fallback failed",fallbackError);
+     autoPayload=null;rows=[];
+     setStatus("TICKER NOT AVAILABLE",false);
+     $("symbol").textContent=s+" • UNAVAILABLE";
+     $("signalText").textContent="No automatic dataset or live daily feed is available for this ticker yet. Choose a supported market or upload a CSV.";
+   }
  }finally{
    if(token===marketLoadToken)setBusy(false);
  }
