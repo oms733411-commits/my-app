@@ -106,15 +106,20 @@ def load_symbol(symbol):
     if raw is None or raw.empty:
         return None
     need=["open","high","low","close","volume"]
-    if not all(c in raw.columns for c in need): return None
-    raw=raw[need+["date"]].dropna().copy() if "date" in raw.columns else raw[need].dropna().copy()
+    # yfinance normally keeps Date/Datetime in the index. Normalize the
+    # index into a real date column BEFORE selecting the OHLCV columns.
+    if "date" not in raw.columns and "Date" not in raw.columns and "Datetime" not in raw.columns:
+        raw=raw.reset_index()
     if "Date" in raw.columns: raw=raw.rename(columns={"Date":"date"})
     elif "Datetime" in raw.columns: raw=raw.rename(columns={"Datetime":"date"})
     elif "date" not in raw.columns:
-        raw=raw.reset_index()
-        idx_name=str(raw.columns[0]).lower()
-        if idx_name in ("date","datetime","index"): raw=raw.rename(columns={raw.columns[0]:"date"})
-    raw["date"]=pd.to_datetime(raw["date"]).dt.tz_localize(None)
+        raw=raw.rename(columns={raw.columns[0]:"date"})
+    if not all(c in raw.columns for c in need+["date"]): return None
+    raw=raw[need+["date"]].dropna().copy()
+    raw["date"]=pd.to_datetime(raw["date"],errors="coerce")
+    if getattr(raw["date"].dt,"tz",None) is not None:
+        raw["date"]=raw["date"].dt.tz_localize(None)
+    raw=raw.dropna(subset=["date"])
     return raw
 
 def validate_ohlcv(df):
@@ -233,16 +238,21 @@ def load_intraday(symbol, interval, period):
         raw=load_yahoo_chart(symbol,interval,period)
     if raw is None or raw.empty: return None
     need=["open","high","low","close","volume"]
-    if not all(c in raw.columns for c in need): return None
-    raw=raw[need+["date"]].dropna().copy() if "date" in raw.columns else raw[need].dropna().copy()
+    # As with daily data, yfinance usually stores the timestamp in the index.
+    # Reset it before selecting columns so the provider cannot silently produce
+    # an empty market dataset.
+    if "date" not in raw.columns and "Date" not in raw.columns and "Datetime" not in raw.columns:
+        raw=raw.reset_index()
     if "Datetime" in raw.columns: raw=raw.rename(columns={"Datetime":"date"})
     elif "Date" in raw.columns: raw=raw.rename(columns={"Date":"date"})
     elif "date" not in raw.columns:
-        raw=raw.reset_index()
         raw=raw.rename(columns={raw.columns[0]:"date"})
-    raw["date"]=pd.to_datetime(raw["date"])
+    if not all(c in raw.columns for c in need+["date"]): return None
+    raw=raw[need+["date"]].dropna().copy()
+    raw["date"]=pd.to_datetime(raw["date"],errors="coerce")
     if getattr(raw["date"].dt,"tz",None) is not None:
         raw["date"]=raw["date"].dt.tz_localize(None)
+    raw=raw.dropna(subset=["date"])
     return validate_ohlcv(raw)
 
 def predict_intraday_one(predictor, df, interval, pred_len, symbol):
