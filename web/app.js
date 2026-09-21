@@ -301,7 +301,7 @@ async function fetchGithubCsv(symbol,kind,signal){
   const out=[];
   // Keep parsing bounded for the large 1-minute file while retaining enough
   // recent history for 1D/5D/1M chart ranges.
-  const from=Math.max(1,lines.length-(kind==="1m"?140000:80000));
+  const from=Math.max(1,lines.length-(kind==="1m"?30000:80000));
   for(let i=from;i<lines.length;i++){
     const line=lines[i].trim(); if(!line)continue;
     const p=line.split(",");
@@ -325,36 +325,58 @@ function aggregateBars(source,minutes){
   return [...buckets.values()].sort((a,b)=>new Date(a.date)-new Date(b.date));
 }
 async function fetchIntraday(symbol,interval,range,signal){
-  let liveError=null;
+  let lastError=null;
+
+  // For NSE stocks we have a verified public OHLCV mirror. Use it FIRST so
+  // the UI does not sit through several CORS-proxy timeouts before showing
+  // a real chart. Yahoo remains a secondary live-feed attempt for symbols
+  // without that direct fallback.
+  if(githubDatasetSymbol(symbol)){
+    try{
+      if(interval==="15m"){
+        return await fetchGithubCsv(symbol,"15m",signal);
+      }
+      if(interval==="5m"){
+        const one=await fetchGithubCsv(symbol,"1m",signal);
+        return aggregateBars(one,5);
+      }
+      if(interval==="1h"){
+        const fifteen=await fetchGithubCsv(symbol,"15m",signal);
+        return aggregateBars(fifteen,60);
+      }
+    }catch(e){
+      if(e?.name==="AbortError")throw e;
+      lastError=e;
+    }
+  }
+
   if(symbol==="BTC-USD"){
     try{
-      const r=await fetchWithTimeout("https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval="+encodeURIComponent(interval)+"&limit="+(range==="1d"?288:1000),{cache:"no-store",signal},12000);
+      const r=await fetchWithTimeout("https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval="+encodeURIComponent(interval)+"&limit="+(range==="1d"?288:1000),{cache:"no-store",signal},8000);
       if(r.ok){
         const a=await r.json();
         const live=a.map(v=>({date:new Date(+v[0]).toISOString(),open:+v[1],high:+v[2],low:+v[3],close:+v[4],volume:+v[5]}))
           .filter(v=>v.date&&[v.open,v.high,v.low,v.close].every(Number.isFinite));
         if(live.length)return live;
       }
-    }catch(e){if(e?.name==="AbortError")throw e;liveError=e;}
+    }catch(e){
+      if(e?.name==="AbortError")throw e;
+      lastError=e;
+    }
   }
-  try{return await fetchYahooChart(symbol,interval,range,signal);}
-  catch(e){if(e?.name==="AbortError")throw e;liveError=e;}
+
   try{
-    if(interval==="15m"){
-      return await fetchGithubCsv(symbol,"15m",signal);
-    }
-    if(interval==="5m"){
-      const one=await fetchGithubCsv(symbol,"1m",signal);
-      return aggregateBars(one,5);
-    }
-    if(interval==="1h"){
-      const fifteen=await fetchGithubCsv(symbol,"15m",signal);
-      return aggregateBars(fifteen,60);
-    }
-  }catch(e){if(e?.name==="AbortError")throw e;liveError=e;}
+    return await fetchYahooChart(symbol,interval,range,signal);
+  }catch(e){
+    if(e?.name==="AbortError")throw e;
+    lastError=e;
+  }
+
   const pack=autoPayload?.symbols?.[symbol]?.intraday?.[interval];
-  if(Array.isArray(pack?.history) && pack.history.length)return normalizeChartRows(pack.history).slice(-1000);
-  throw liveError||Error("intraday unavailable");
+  if(Array.isArray(pack?.history) && pack.history.length){
+    return normalizeChartRows(pack.history).slice(-1000);
+  }
+  throw lastError||Error("intraday unavailable");
 }
 async function fetchDailyFallback(symbol){
   try{return await fetchYahooChart(symbol,"1d","2y");}
