@@ -23,7 +23,7 @@ OUT=ROOT/"web"/"data"/"market.json"
 # This is intentionally curated rather than literally every listed security,
 # because free CI inference time is finite. CSV remains available for any custom ticker.
 SYMBOLS=[
-    "RELIANCE.NS","IDEA.NS","BTC-USD","XAUUSD=X","INFY.NS"
+    "RELIANCE.NS","IDEA.NS","BTC-USD","INFY.NS"
 ]
 
 HORIZONS=[5,10,20,30]
@@ -33,7 +33,7 @@ LOOKBACK=400
 # 5m/15m/1h OHLCV candles. Keep the set curated so the free GitHub Actions
 # pipeline stays within its time budget.
 INTRADAY_SYMBOLS={
-    "RELIANCE.NS","IDEA.NS","BTC-USD","XAUUSD=X","INFY.NS"
+    "RELIANCE.NS","IDEA.NS","BTC-USD","INFY.NS"
 }
 INTRADAY_CONFIG={
     "5m":{"period":"60d","pred_len":24,"history_bars":600},
@@ -147,21 +147,17 @@ def validate_ohlcv(df):
     return df if not df.empty else None
 
 def validate_forecast(pred, y_ts):
-    """Reject non-finite/invalid forecast candles before publishing them."""
-    if pred is None or len(pred)!=len(y_ts):
+    """Validate the forecast values actually consumed by the web chart.
+
+    Kronos returns a full OHLCV frame, but the web app plots forecast close.
+    Some model outputs can have slightly inconsistent synthetic high/low values;
+    reject only unusable timestamps or close values rather than discarding a
+    valid close forecast.
+    """
+    if pred is None or len(pred) != len(y_ts) or "close" not in pred.columns:
         return False
-    cols=[c for c in ("open","high","low","close","volume") if c in pred.columns]
-    if not {"open","high","low","close"}.issubset(cols):
-        return False
-    a=pred[cols].apply(pd.to_numeric,errors="coerce")
-    if not np.isfinite(a.to_numpy()).all():
-        return False
-    if (a[["open","high","low","close"]]<=0).any().any():
-        return False
-    if "volume" in a.columns and (a["volume"]<0).any():
-        return False
-    valid=(a["high"]>=a[["open","close","low"]].max(axis=1))&(a["low"]<=a[["open","close","high"]].min(axis=1))
-    return bool(valid.all())
+    close=pd.to_numeric(pred["close"],errors="coerce").to_numpy(dtype=float)
+    return bool(len(close) == len(y_ts) and np.isfinite(close).all() and (close > 0).all())
 
 def predict_one(predictor, df, n, symbol):
     x=df.tail(LOOKBACK).copy()
