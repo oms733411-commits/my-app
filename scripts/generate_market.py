@@ -158,7 +158,7 @@ def predict_one(predictor, df, n, symbol):
 
 def rolling_backtest(predictor, df, horizon=5, windows=3):
     if len(df)<LOOKBACK+horizon+5: return None
-    errors=[]; dirs=[]
+    errors=[]; dirs=[]; points=[]
     starts=np.linspace(LOOKBACK,len(df)-horizon,windows,dtype=int)
     for end in starts:
         hist=df.iloc[:end]
@@ -170,8 +170,9 @@ def rolling_backtest(predictor, df, horizon=5, windows=3):
         pred=p["close"].values
         errors.extend(actual-pred)
         dirs.extend((np.sign(actual-x["close"].iloc[-1])==np.sign(pred-x["close"].iloc[-1])).astype(float))
+        points.extend([{"date":str(d.date()),"actual":float(a),"kronos":float(v)} for d,a,v in zip(y_ts,actual,pred)])
     e=np.asarray(errors,float)
-    return {"windows":int(windows),"horizon":int(horizon),"mae":float(np.mean(np.abs(e))),"rmse":float(np.sqrt(np.mean(e**2))),"direction":float(np.mean(dirs)*100)}
+    return {"windows":int(windows),"horizon":int(horizon),"mae":float(np.mean(np.abs(e))),"rmse":float(np.sqrt(np.mean(e**2))),"direction":float(np.mean(dirs)*100),"points":points}
 
 def intraday_future_dates(last, interval, n, symbol):
     last=pd.Timestamp(last)
