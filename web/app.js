@@ -483,20 +483,63 @@ function renderBacktest(bt){
 function clearBacktest(note){["mae","rmse","dir"].forEach(id=>$(id).textContent="—");$("btWindows").textContent="—";$("maeBar").style.width="0%";$("rmseBar").style.width="0%";$("dirBar").style.width="0%";$("backtestNote").textContent=note;}
 
 function readCSV(file){
- if(!file)return;if(!file.name.toLowerCase().endsWith(".csv"))return alert("Please choose a CSV file.");
- const r=new FileReader();r.onload=()=>{try{
-  const d=parseCSV(r.result);if(d.length<60)throw Error("Need at least 60 valid rows.");
-  rows=d;dataSource="CSV";autoPayload=null;activeSymbol="CUSTOM";$("symbolInput").value="CUSTOM";render();setStatus("CSV LOADED • LOCAL");
- }catch(e){alert("CSV needs timestamp/date + open + high + low + close. Volume is recommended.");}};
+ if(!file)return;
+ if(!/\\.(csv|txt)$/i.test(file.name))return alert("Please choose a CSV file.");
+ const r=new FileReader();
+ r.onload=()=>{
+  try{
+   const d=parseCSV(String(r.result||""));
+   if(d.length<20)throw Error("Need at least 20 valid OHLC rows.");
+   rows=d;dataSource="CSV";autoPayload=null;activeSymbol="CUSTOM";
+   $("symbolInput").value="CUSTOM";liveQuote=null;chartState.intraday=false;
+   render();setStatus("CSV LOADED • "+d.length+" ROWS • LOCAL",true);
+  }catch(e){alert("CSV could not be read. Use Date/Timestamp + Open + High + Low + Close. Volume is optional.");}
+ };
  r.readAsText(file);
 }
-function parseCSV(t){
- const lines=t.trim().split(/\r?\n/).filter(Boolean),h=lines.shift().split(",").map(v=>v.trim().toLowerCase().replace(/["']/g,""));
- const find=names=>{for(const n of names){const i=h.findIndex(v=>v===n||v.includes(n));if(i>=0)return i;}return-1};
- const ti=find(["timestamp","datetime","date","time"]),oi=find(["open"]),hi=find(["high"]),li=find(["low"]),ci=find(["close"]),vi=find(["volume"]);
- if(Math.min(ti,oi,hi,li,ci)<0)throw Error();
- return lines.map(l=>{const a=l.split(",");return{date:a[ti],open:+a[oi],high:+a[hi],low:+a[li],close:+a[ci],volume:vi>=0?+a[vi]:0};}).filter(x=>x.date&&[x.open,x.high,x.low,x.close].every(Number.isFinite));
+function parseCSV(text){
+ const clean=text.replace(/^\\uFEFF/,"").trim();
+ if(!clean)throw Error("empty");
+ const detect=clean.split(/\\r?\\n/).slice(0,3).join("\\n");
+ const candidates=[",",";","\\t"];
+ const delim=candidates.map(d=>({d,n:(detect.match(new RegExp(d==="\\t"?"\\t":d===","?",":";","g"))||[]).length})).sort((x,y)=>y.n-x.n)[0].d;
+ const parseLine=line=>{
+   const out=[];let cur="",q=false;
+   for(let i=0;i<line.length;i++){
+     const ch=line[i];
+     if(ch==='"'){
+       if(q&&line[i+1]==='"'){cur+='"';i++;continue;}
+       q=!q;continue;
+     }
+     if(ch===delim&&!q){out.push(cur.trim());cur="";}else cur+=ch;
+   }
+   out.push(cur.trim());return out;
+ };
+ const lines=clean.split(/\\r?\\n/).filter(x=>x.trim());
+ let header=parseLine(lines[0]).map(v=>v.replace(/^["']|["']$/g,"").trim().toLowerCase());
+ let dataLines=lines.slice(1);
+ // Support yfinance's two-row MultiIndex CSV export: Price row + Ticker row.
+ if(header[0]==="price" && dataLines.length && /^ticker$/i.test(parseLine(dataLines[0])[0]||"")){
+   dataLines=dataLines.slice(1);
+   header[0]="date";
+ }
+ const find=names=>{
+   for(const n of names){
+     const i=header.findIndex(v=>v===n||v.replace(/[ _-]/g,"").includes(n.replace(/[ _-]/g,"")));
+     if(i>=0)return i;
+   }
+   return -1;
+ };
+ const ti=find(["timestamp","datetime","date","time","index"]);
+ const oi=find(["open"]),hi=find(["high"]),li=find(["low"]),ci=find(["close","adj close","adj_close"]),vi=find(["volume"]);
+ if(Math.min(ti,oi,hi,li,ci)<0)throw Error("missing OHLC");
+ return dataLines.map(line=>{
+   const a=parseLine(line);
+   const num=v=>{const n=Number(String(v??"").replace(/,/g,""));return Number.isFinite(n)?n:NaN;};
+   return {date:String(a[ti]||"").trim(),open:num(a[oi]),high:num(a[hi]),low:num(a[li]),close:num(a[ci]),volume:vi>=0?num(a[vi])||0:0};
+ }).filter(x=>x.date&&[x.open,x.high,x.low,x.close].every(Number.isFinite));
 }
+
 function showScreenshot(file){
  if(!file)return;const box=$("shotPreview"),url=URL.createObjectURL(file);box.classList.remove("hidden");box.innerHTML='<img alt="Uploaded chart screenshot" src="'+url+'"><span>Screenshot attached locally</span>';
 }
