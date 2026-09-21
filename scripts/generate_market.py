@@ -246,12 +246,20 @@ def predict_intraday_one(predictor, df, interval, pred_len, symbol):
     return [{"date":str(d.isoformat()),"close":float(v)} for d,v in zip(y_ts,p["close"].values)]
 
 def main():
+    # Market history must remain available even if the optional Kronos runtime fails.
+    # This prevents one model/dependency failure from publishing an empty market dataset.
     device="cuda" if torch.cuda.is_available() else "cpu"
-    tokenizer=KronosTokenizer.from_pretrained(TOKENIZER_ID)
-    model=Kronos.from_pretrained(MODEL_ID)
-    tokenizer.eval(); model.eval()
-    predictor=KronosPredictor(model,tokenizer,device=device,max_context=512)
-    result={"generated_at":pd.Timestamp.utcnow().isoformat(),"source":"Yahoo Finance via yfinance (unofficial historical market-data interface)","model":{"name":"Kronos-small","id":MODEL_ID,"tokenizer":TOKENIZER_ID,"device":device,"lookback":LOOKBACK},"symbols":{}}
+    predictor=None
+    model_status="unavailable"
+    try:
+        tokenizer=KronosTokenizer.from_pretrained(TOKENIZER_ID)
+        model=Kronos.from_pretrained(MODEL_ID)
+        tokenizer.eval(); model.eval()
+        predictor=KronosPredictor(model,tokenizer,device=device,max_context=512)
+        model_status="ready"
+    except Exception as me:
+        print("Kronos runtime unavailable; publishing verified market history only:",repr(me))
+    result={"generated_at":pd.Timestamp.utcnow().isoformat(),"source":"Yahoo Finance via yfinance (unofficial historical market-data interface)","model":{"name":"Kronos-small","id":MODEL_ID,"tokenizer":TOKENIZER_ID,"device":device,"lookback":LOOKBACK,"status":model_status},"symbols":{}}
     symbols = SYMBOLS[GROUP_INDEX::GROUP_COUNT] if GROUP_COUNT > 1 else SYMBOLS
     print("Group", GROUP_INDEX, "of", GROUP_COUNT, "symbols", len(symbols))
     for symbol in symbols:
@@ -259,11 +267,15 @@ def main():
             df=load_symbol(symbol)
             if df is None or len(df)<LOOKBACK: continue
             item={"symbol":symbol,"last_date":str(df["date"].iloc[-1].date()),"last_close":float(df["close"].iloc[-1]),"history":[{"date":str(row["date"].date()),"open":float(row["open"]),"high":float(row["high"]),"low":float(row["low"]),"close":float(row["close"]),"volume":float(row["volume"])} for _,row in df.tail(400).iterrows()],"forecast":{}}
-            for h in HORIZONS:
-                item["forecast"][str(h)]=predict_one(predictor,df,h,symbol)
-            item["backtest"]=rolling_backtest(predictor,df,5,3)
+            if predictor is not None:
+                for h in HORIZONS:
+                    item["forecast"][str(h)]=predict_one(predictor,df,h,symbol)
+                item["backtest"]=rolling_backtest(predictor,df,5,3)
+            else:
+                item["forecast"]={}
+                item["backtest"]=None
             item["intraday"]={}
-            if symbol in INTRADAY_SYMBOLS:
+            if predictor is not None and symbol in INTRADAY_SYMBOLS:
                 for interval,cfg in INTRADAY_CONFIG.items():
                     try:
                         idf=load_intraday(symbol,interval,cfg["period"])
