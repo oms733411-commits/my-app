@@ -186,7 +186,9 @@ def main():
                                 "history":[{"date":str(row["date"].isoformat()),"open":float(row["open"]),"high":float(row["high"]),"low":float(row["low"]),"close":float(row["close"]),"volume":float(row["volume"])} for _,row in idf.tail(cfg.get("history_bars",600)).iterrows()],
                                 "forecast":predict_intraday_one(predictor,idf,interval,cfg["pred_len"],symbol)
                             }
-                            print("OK INTRADAY",symbol,interval)
+                            if not item["intraday"][interval]["forecast"]:
+                                raise RuntimeError(f"Empty Kronos forecast for {symbol} {interval}")
+                            print("OK INTRADAY",symbol,interval,"history",len(item["intraday"][interval]["history"]),"forecast",len(item["intraday"][interval]["forecast"]))
                     except Exception as ie:
                         print("SKIP INTRADAY",symbol,interval,repr(ie))
             result["symbols"][symbol]=item
