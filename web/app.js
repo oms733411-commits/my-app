@@ -7,13 +7,23 @@ $("symbolInput").value=activeSymbol;
 $("csv").addEventListener("change",e=>readCSV(e.target.files[0]));
 $("shot").addEventListener("change",e=>showScreenshot(e.target.files[0]));
 $("horizon").addEventListener("change",()=>{if(rows.length)render();});
-$("range").addEventListener("change",()=>{if(rows.length)render();});
+$("range").addEventListener("change",()=>{if(($("interval")?.value||"1d")!=="1d"){ $("intradayRange").value=$("range").value; loadChartMode(); } else if(rows.length)render();});
 $("interval").addEventListener("change",()=>{syncTimeframeButtons();loadChartMode();});
 $("intradayRange").addEventListener("change",()=>loadChartMode());
 function syncTimeframeButtons(){
   const mode=$("interval")?.value||"1d";
   document.querySelectorAll(".tf-btn").forEach(b=>b.classList.toggle("active",b.dataset.tf===mode));
   document.body.classList.toggle("intraday-mode",mode!=="1d");
+  const range=$("range");
+  if(!range)return;
+  const isIntraday=mode!=="1d";
+  const values=isIntraday?["1d","5d","1mo"]:["5","22","66","132","252","400"];
+  const labels=isIntraday?["1D","5D","1M"]:["1W","1M","3M","6M","1Y","Max"];
+  const current=isIntraday?($("intradayRange")?.value||"1d"):(range.value||"252");
+  range.innerHTML=values.map((v,i)=>'<option value="'+v+'">'+labels[i]+'</option>').join("");
+  range.value=values.includes(current)?current:values[isIntraday?0:4];
+  range.setAttribute("aria-label",isIntraday?"Intraday chart range":"Daily chart range");
+  if($("intradayRange"))$("intradayRange").value=range.value;
 }
 document.querySelectorAll(".tf-btn").forEach(b=>b.addEventListener("click",()=>{
   const mode=b.dataset.tf||"1d";
@@ -97,6 +107,7 @@ let chartLoadToken=0;
 async function loadChartMode(){
   const token=++chartLoadToken;
   const mode=$("interval")?.value||"1d";
+  syncTimeframeButtons();
   if(mode==="1d"){
     chartState.intraday=false;
     render();
