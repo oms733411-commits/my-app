@@ -597,11 +597,10 @@ function parseCSV(text){
    const out=[];let cur="",q=false;
    for(let i=0;i<line.length;i++){
      const ch=line[i];
-     if(ch==="""){
-       if(q&&line[i+1]==="""){cur+=""";i++;continue;}
-       q=!q;continue;
-     }
-     if(ch===delim&&!q){out.push(cur.trim());cur="";}else cur+=ch;
+      if(ch==='"'){
+        if(q&&line[i+1]==='"'){cur+='"';i++;continue;}
+        q=!q;continue;
+      }
    }
    out.push(cur.trim());return out;
  };
