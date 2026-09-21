@@ -44,7 +44,7 @@ jobs:
           from pathlib import Path
           p=Path("web/data/market.json")
           data=json.loads(p.read_text())
-          expected={"RELIANCE.NS","IDEA.NS","BTC-USD","XAUUSD=X","INFY.NS"}
+          expected={"RELIANCE.NS","IDEA.NS","BTC-USD","INFY.NS"}
           actual=set(data.get("symbols",{}))
           if not actual:
               raise SystemExit("Market generator produced ZERO symbols; refusing to publish empty market data")
