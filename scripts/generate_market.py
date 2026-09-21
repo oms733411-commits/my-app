@@ -104,6 +104,47 @@ def load_symbol(symbol):
     raw["date"]=pd.to_datetime(raw["date"]).dt.tz_localize(None)
     return raw
 
+def validate_ohlcv(df):
+    """Drop malformed candles and enforce chronological, finite OHLCV data."""
+    if df is None or df.empty:
+        return None
+    df=df.copy()
+    required=["date","open","high","low","close","volume"]
+    if not all(col in df.columns for col in required):
+        return None
+    df["date"]=pd.to_datetime(df["date"],errors="coerce")
+    if getattr(df["date"].dt,"tz",None) is not None:
+        df["date"]=df["date"].dt.tz_localize(None)
+    for col in required[1:]:
+        df[col]=pd.to_numeric(df[col],errors="coerce")
+    df=df.dropna(subset=required)
+    df=df[np.isfinite(df[required[1:]].to_numpy()).all(axis=1)]
+    # OHLC invariants: high/low must contain both open and close; prices/volume non-negative.
+    valid=(
+        (df["open"]>0)&(df["high"]>0)&(df["low"]>0)&(df["close"]>0)&(df["volume"]>=0)&
+        (df["high"]>=df[["open","close","low"]].max(axis=1))&
+        (df["low"]<=df[["open","close","high"]].min(axis=1))
+    )
+    df=df.loc[valid].drop_duplicates(subset=["date"],keep="last").sort_values("date").reset_index(drop=True)
+    return df if not df.empty else None
+
+def validate_forecast(pred, y_ts):
+    """Reject non-finite/invalid forecast candles before publishing them."""
+    if pred is None or len(pred)!=len(y_ts):
+        return False
+    cols=[c for c in ("open","high","low","close","volume") if c in pred.columns]
+    if not {"open","high","low","close"}.issubset(cols):
+        return False
+    a=pred[cols].apply(pd.to_numeric,errors="coerce")
+    if not np.isfinite(a.to_numpy()).all():
+        return False
+    if (a[["open","high","low","close"]]<=0).any().any():
+        return False
+    if "volume" in a.columns and (a["volume"]<0).any():
+        return False
+    valid=(a["high"]>=a[["open","close","low"]].max(axis=1))&(a["low"]<=a[["open","close","high"]].min(axis=1))
+    return bool(valid.all())
+
 def predict_one(predictor, df, n, symbol):
     x=df.tail(LOOKBACK).copy()
     x_ts=x["date"]
@@ -111,6 +152,8 @@ def predict_one(predictor, df, n, symbol):
     x_df=x[["open","high","low","close","volume"]].copy()
     with torch.no_grad():
         p=predictor.predict(df=x_df,x_timestamp=x_ts,y_timestamp=y_ts,pred_len=n,T=1.0,top_p=0.9,sample_count=1,verbose=False)
+    if not validate_forecast(p,y_ts):
+        raise RuntimeError(f"Invalid Kronos forecast for {symbol} daily")
     return [{"date":str(d.date()),"close":float(v)} for d,v in zip(y_ts,p["close"].values)]
 
 def rolling_backtest(predictor, df, horizon=5, windows=3):
@@ -172,7 +215,7 @@ def load_intraday(symbol, interval, period):
     raw["date"]=pd.to_datetime(raw["date"])
     if getattr(raw["date"].dt,"tz",None) is not None:
         raw["date"]=raw["date"].dt.tz_localize(None)
-    return raw
+    return validate_ohlcv(raw)
 
 def predict_intraday_one(predictor, df, interval, pred_len, symbol):
     if df is None or len(df)<LOOKBACK: return []
@@ -186,6 +229,8 @@ def predict_intraday_one(predictor, df, interval, pred_len, symbol):
             y_timestamp=y_ts,
             pred_len=pred_len,T=1.0,top_p=0.9,sample_count=1,verbose=False
         )
+    if not validate_forecast(p,y_ts):
+        raise RuntimeError(f"Invalid Kronos forecast for {symbol} {interval}")
     return [{"date":str(d.isoformat()),"close":float(v)} for d,v in zip(y_ts,p["close"].values)]
 
 def main():
