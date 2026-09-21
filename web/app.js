@@ -66,6 +66,7 @@ async function refreshLiveQuote(){
       $("forecastPct").textContent=(pct>=0?"+":"")+pct.toFixed(2)+"% from live price";
       $("confidenceMini").textContent="Live price basis";
     }
+    if(($("interval")?.value||"1d")!=="1d") return;
     const range=+( $("range")?.value || 252 );
     const itemRows=(autoPayload?.symbols?.[activeSymbol]?.history||rows).slice(-Math.min(range,rows.length));
     const forecast=autoPayload?.symbols?.[activeSymbol]?.forecast?.[String(+$("horizon").value)]||[];
