@@ -156,10 +156,12 @@ def predict_one(predictor, df, n, symbol):
         raise RuntimeError(f"Invalid Kronos forecast for {symbol} daily")
     return [{"date":str(d.date()),"close":float(v)} for d,v in zip(y_ts,p["close"].values)]
 
-def rolling_backtest(predictor, df, horizon=5, windows=3):
+def rolling_backtest(predictor, df, horizon=5, windows=8):
     if len(df)<LOOKBACK+horizon+5: return None
-    errors=[]; dirs=[]; points=[]
+    errors=[]; dirs=[]; points=[]; ape=[]
     starts=np.linspace(LOOKBACK,len(df)-horizon,windows,dtype=int)
+    starts=np.unique(starts).astype(int)
+    windows=len(starts)
     for end in starts:
         hist=df.iloc[:end]
         actual=df.iloc[end:end+horizon]["close"].values
@@ -170,9 +172,10 @@ def rolling_backtest(predictor, df, horizon=5, windows=3):
         pred=p["close"].values
         errors.extend(actual-pred)
         dirs.extend((np.sign(actual-x["close"].iloc[-1])==np.sign(pred-x["close"].iloc[-1])).astype(float))
+        ape.extend(np.abs((actual-pred)/np.maximum(np.abs(actual),1e-9))*100)
         points.extend([{"date":str(d.date()),"actual":float(a),"kronos":float(v)} for d,a,v in zip(y_ts,actual,pred)])
     e=np.asarray(errors,float)
-    return {"windows":int(windows),"horizon":int(horizon),"mae":float(np.mean(np.abs(e))),"rmse":float(np.sqrt(np.mean(e**2))),"direction":float(np.mean(dirs)*100),"points":points}
+    return {"windows":int(windows),"horizon":int(horizon),"mae":float(np.mean(np.abs(e))),"rmse":float(np.sqrt(np.mean(e**2))),"mape":float(np.mean(ape)),"direction":float(np.mean(dirs)*100),"points":points}
 
 def intraday_future_dates(last, interval, n, symbol):
     last=pd.Timestamp(last)
