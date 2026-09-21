@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#07090d"><meta name="description" content="Kronos AI model selector">
+<title>Kronos AI — Select Model</title>
+<link rel="stylesheet" href="styles.css">
+<style>
+.model-select{min-height:78vh;display:grid;place-items:center}.model-box{width:min(900px,100%)}.model-box h1{font:600 clamp(42px,7vw,76px)/.98 'Space Grotesk';letter-spacing:-.05em;margin:12px 0}.model-box h1 em{color:#a9ff6b;font-style:normal}.model-sub{max-width:620px;color:#8d97a8;line-height:1.7;font-size:14px}.model-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:32px}.model-card{display:block;text-decoration:none;color:inherit;background:linear-gradient(145deg,#10151e,#0b0f15);border:1px solid #202733;border-radius:18px;padding:26px;transition:.18s ease}.model-card:hover{border-color:#a9ff6b;transform:translateY(-2px)}.model-card .model-tag{font-size:10px;letter-spacing:.16em;color:#778296;font-weight:700}.model-card h2{font:600 24px 'Space Grotesk';margin:9px 0}.model-card p{font-size:12px;color:#7d8797;line-height:1.6}.model-meta{display:flex;gap:8px;flex-wrap:wrap;margin-top:18px}.model-meta span{border:1px solid #283241;border-radius:999px;padding:7px 10px;color:#8a95a7;font-size:10px}.model-card .open{display:inline-block;margin-top:22px;background:#a9ff6b;color:#091008;border-radius:10px;padding:10px 14px;font-weight:700;font-size:11px}.model-note{margin-top:18px;color:#667285;font-size:10px}@media(max-width:720px){.model-grid{grid-template-columns:1fr}.app-shell{padding:18px}}
+</style>
+</head>
+<body>
+<div class="app-shell">
+<header class="topbar">
+  <div class="brand"><div class="brand-mark">K</div><div><b>KRONOS</b><span>AI MODEL SELECTOR</span></div></div>
+  <div class="status"><i></i><span>READY</span></div>
+</header>
+<main class="model-select">
+  <section class="model-box">
+    <p class="eyebrow">CHOOSE YOUR MODEL</p>
+    <h1>Pick the Kronos<br><em>you want to use.</em></h1>
+    <p class="model-sub">The existing Kronos-small workspace stays exactly as it is. Choose Kronos-small for the current workspace or open the separate Kronos-base workspace with the same chart, intraday, CSV, screenshot, forecast and backtest features.</p>
+    <div class="model-grid">
+      <a class="model-card" href="./">
+        <span class="model-tag">CURRENT WORKSPACE</span>
+        <h2>Kronos-small</h2>
+        <p>24.7M parameters • 512-token context • the existing Kronos AI page and its current generated dataset.</p>
+        <div class="model-meta"><span>1D</span><span>5m</span><span>15m</span><span>1H</span><span>Backtest</span></div>
+        <span class="open">Open Kronos-small →</span>
+      </a>
+      <a class="model-card" href="./base.html">
+        <span class="model-tag">BASE MODEL</span>
+        <h2>Kronos-base</h2>
+        <p>102.3M parameters • 512-token context • the same workspace experience, powered by the original open-source Kronos-base model.</p>
+        <div class="model-meta"><span>1D</span><span>5m</span><span>15m</span><span>1H</span><span>Backtest</span></div>
+        <span class="open">Open Kronos-base →</span>
+      </a>
+    </div>
+    <p class="model-note">Both model pages use the same original Kronos tokenizer family. Kronos-base uses NeoQuasar/Kronos-base; no existing Kronos-small code or data is modified by this selector.</p>
+  </section>
+</main>
+<footer>KRONOS AI <span>•</span> Open-source model workspace <span>•</span> Forecasts are informational only</footer>
+</div>
+</body></html>
