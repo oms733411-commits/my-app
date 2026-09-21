@@ -409,9 +409,19 @@ async function loadMarket(){
      autoPayload=loaded; rows=normalizeChartRows(item.history);
    }
    if(!rows.length){
-     const fallback=await fetchDailyFallback(s);
+     // Do not wait on the generated dataset or a CORS proxy when the browser
+     // only needs real OHLC candles. For supported NSE symbols, use the direct
+     // public OHLCV mirror first; Yahoo remains the secondary source.
+     let fallback=null;
+     if(githubDatasetSymbol(s)){
+       try{ fallback=await fetchGithubCsv(s,"1d",marketAbort.signal); }
+       catch(e){ if(e?.name==="AbortError")throw e; console.warn("Direct OHLCV fallback failed",e); }
+     }
+     if(!fallback?.length){
+       fallback=await fetchDailyFallback(s);
+     }
      if(token!==marketLoadToken)return;
-     if(!fallback.length)throw Error("No valid market history");
+     if(!Array.isArray(fallback)||!fallback.length)throw Error("No valid market history");
      autoPayload=loaded||null; rows=fallback;
      $("symbol").textContent=s+" • DAILY • LIVE FEED";
      render();
