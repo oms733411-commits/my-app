@@ -30,26 +30,18 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - name: Cache model and Python packages
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cache/huggingface
-            ~/.cache/pip
-          key: kronos-${{ runner.os }}-${{ matrix.group }}-${{ hashFiles('scripts/requirements.txt') }}
-      - name: Install Kronos
+      - name: Install market-data dependencies
         run: |
-          git clone --depth 1 https://github.com/shiyu-coder/Kronos.git /tmp/Kronos
           pip install --upgrade pip
-          pip install -r /tmp/Kronos/requirements.txt
           pip install -r scripts/requirements.txt
-      - name: Generate forecasts
+      - name: Generate market data
+
         env:
           HF_HUB_DISABLE_TELEMETRY: "1"
           GROUP_INDEX: ${{ matrix.group }}
           GROUP_COUNT: "4"
         run: |
-          PYTHONPATH=/tmp/Kronos python scripts/generate_market.py
+          python scripts/generate_market.py
       - name: Upload market group
         uses: actions/upload-artifact@v4
         with:
