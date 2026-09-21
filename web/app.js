@@ -633,9 +633,34 @@ function parseCSV(text){
  })).filter(x=>x.date&&[x.open,x.high,x.low,x.close].every(Number.isFinite));
 }
 
+let screenshotFile=null;
 function showScreenshot(file){
- if(!file)return;const box=$("shotPreview"),url=URL.createObjectURL(file);box.classList.remove("hidden");box.innerHTML='<img alt="Uploaded chart screenshot" src="'+url+'"><span>Screenshot attached locally</span>';
+ if(!file)return;
+ screenshotFile=file;
+ const box=$("shotPreview"),url=URL.createObjectURL(file);
+ box.classList.remove("hidden");
+ box.innerHTML='<img alt="Uploaded chart screenshot" src="'+url+'"><div class="shot-actions"><button type="button" class="ghost" id="analyzeShotBtn">Analyze screenshot</button><span id="shotStatus">Image loaded locally</span></div><pre id="shotText" class="shot-text hidden"></pre>';
+ $("analyzeShotBtn").onclick=analyzeScreenshot;
 }
+async function analyzeScreenshot(){
+ if(!screenshotFile)return;
+ const status=$("shotStatus"),textBox=$("shotText"),btn=$("analyzeShotBtn");
+ btn.disabled=true;status.textContent="OCR running…";textBox.classList.add("hidden");
+ try{
+   if(!window.Tesseract)throw Error("OCR engine is still loading. Try again in a few seconds.");
+   const result=await Tesseract.recognize(screenshotFile,"eng",{logger:m=>{if(m.status==="recognizing text"&&Number.isFinite(m.progress))status.textContent="OCR "+Math.round(m.progress*100)+"%";}});
+   const raw=String(result?.data?.text||"").replace(/\n{3,}/g,"\n\n").trim();
+   if(!raw)throw Error("No readable text found");
+   const compact=raw.replace(/\s+/g," ");
+   const timeframe=(compact.match(/\b(1m|3m|5m|15m|30m|1h|4h|1d|1w|1mo)\b/i)||[])[1]||"Not detected";
+   const ticker=(compact.match(/\b[A-Z]{2,6}(?:\.[A-Z]{1,3})?\b/)||[])[0]||"Not detected";
+   const nums=(compact.match(/\b\d+(?:[.,]\d+)?\b/g)||[]).slice(0,20);
+   textBox.textContent="Detected ticker: "+ticker+"\nDetected timeframe: "+timeframe+"\nVisible numbers: "+(nums.join(", ")||"None")+"\n\nOCR text:\n"+raw;
+   textBox.classList.remove("hidden");status.textContent="OCR complete • screenshot data is reference only";
+ }catch(e){status.textContent=e?.message||"Screenshot analysis failed";}
+ finally{btn.disabled=false;}
+}
+
 function buildChips(){
  const wrap=$("symbolChips");wrap.innerHTML="";
  const list=["RELIANCE.NS","IDEA.NS","BTC-USD","XAUUSD=X","INFY.NS"];
