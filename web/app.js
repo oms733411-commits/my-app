@@ -285,7 +285,7 @@ async function fetchIntraday(symbol,interval,range,signal){
 }
 async function fetchDailyFallback(symbol){
   const url="https://query1.finance.yahoo.com/v8/finance/chart/"+encodeURIComponent(symbol)+"?interval=1d&range=2y";
-  const r=await fetch(url,{cache:"no-store"});
+  const r=await fetchWithTimeout(url,{cache:"no-store"},10000);
   if(!r.ok)throw Error("daily market feed unavailable");
   const j=await r.json(),res=j.chart?.result?.[0];
   if(!res)throw Error("no daily market result");
