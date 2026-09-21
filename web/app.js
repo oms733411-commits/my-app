@@ -478,101 +478,145 @@ function normalizeForecast(list){
 }
 function renderChartOnly(){draw(chartState.hist,chartState.pred);}
 function draw(hist,pred){
-  const c=$("chart"),ctx=c.getContext("2d"),dpr=window.devicePixelRatio||1;
-  const rect=c.getBoundingClientRect(),w=Math.max(320,Math.floor(rect.width||320)),h=Math.max(260,Math.floor(rect.height||300));
-  c.width=Math.round(w*dpr);c.height=Math.round(h*dpr);ctx.setTransform(dpr,0,0,dpr,0,0);ctx.clearRect(0,0,w,h);
-  hist=normalizeChartRows(hist);pred=normalizeForecast(pred);
+  const c=$("chart");
+  if(!c)return;
+  const ctx=c.getContext("2d");
+  if(!ctx)return;
+  hist=normalizeChartRows(hist);
+  pred=normalizeForecast(pred);
+  const rect=c.getBoundingClientRect();
+  const w=Math.max(320,Math.floor(rect.width||c.clientWidth||320));
+  const h=Math.max(280,Math.floor(rect.height||c.clientHeight||300));
+  const dpr=Math.max(1,Math.min(3,window.devicePixelRatio||1));
+  // Size the backing store from the real CSS size before drawing. This keeps
+  // the chart visible and sharp on mobile/HiDPI browsers.
+  c.style.width=w+"px";
+  c.style.height=h+"px";
+  c.width=Math.round(w*dpr);
+  c.height=Math.round(h*dpr);
+  ctx.setTransform(1,0,0,1,0,0);
+  ctx.scale(dpr,dpr);
+  ctx.clearRect(0,0,w,h);
+
   const live=Number.isFinite(Number(liveQuote?.price))?Number(liveQuote.price):null;
-  chartState.intraday = chartState.intraday || (hist.length && String(hist[0].date).includes("T"));
+  const isIntraday=chartState.intraday||hist.some(v=>String(v.date).includes("T"));
   const values=[];
-  hist.forEach(v=>{[v.open,v.high,v.low,v.close].forEach(x=>{if(Number.isFinite(x))values.push(x);});});
+  hist.forEach(v=>[v.open,v.high,v.low,v.close].forEach(x=>{if(Number.isFinite(x))values.push(x);}));
   pred.forEach(v=>{if(Number.isFinite(v.close))values.push(v.close);});
   if(live!==null)values.push(live);
-  let mn=values.length?Math.min(...values):0,mx=values.length?Math.max(...values):1;
-  if(!Number.isFinite(mn)||!Number.isFinite(mx)){mn=0;mx=1;}
-  let span=mx-mn;if(!Number.isFinite(span)||span<=0)span=Math.max(Math.abs(mx)*.01,1);
-  mn-=span*.07;mx+=span*.07;
-  const pad=48,volumeH=48,priceBottom=Math.max(pad+30,h-pad-volumeH);
-  const total=Math.max(1,hist.length+pred.length),step=(w-pad*2)/Math.max(1,total-1);
-  chartState={hist,pred,live,mn,mx,pad,w,h,total,step,priceBottom,hoverIndex:Number.isInteger(chartState.hoverIndex)?chartState.hoverIndex:-1};
-  const X=i=>pad+i*step,Y=v=>priceBottom-(v-mn)/(mx-mn)*(priceBottom-pad);
+  if(!values.length){
+    ctx.fillStyle="#0b0f15";ctx.fillRect(0,0,w,h);
+    ctx.fillStyle="#8993a4";ctx.font="12px Inter,sans-serif";
+    ctx.fillText("Waiting for valid OHLC data…",18,30);
+    return;
+  }
+
+  let mn=Math.min(...values),mx=Math.max(...values);
+  let span=mx-mn;
+  if(!Number.isFinite(span)||span<=0)span=Math.max(Math.abs(mx)*.01,1);
+  mn-=span*.08;mx+=span*.08;
+
+  const pad=48,volumeH=48,priceBottom=Math.max(pad+36,h-pad-volumeH);
+  const total=Math.max(1,hist.length+pred.length);
+  const step=(w-pad*2)/Math.max(1,total-1);
+  chartState={hist,pred,live,mn,mx,pad,w,h,total,step,priceBottom,
+    hoverIndex:Number.isInteger(chartState.hoverIndex)?chartState.hoverIndex:-1,
+    intraday:isIntraday};
+
+  const X=i=>pad+i*step;
+  const Y=v=>priceBottom-(v-mn)/(mx-mn)*(priceBottom-pad);
+
   ctx.fillStyle="#0b0f15";ctx.fillRect(0,0,w,h);
-  ctx.font="10px Inter, sans-serif";
+  ctx.font="10px Inter,sans-serif";
   ctx.strokeStyle="#202733";ctx.lineWidth=1;
+
   for(let i=0;i<5;i++){
     const yy=pad+i*(priceBottom-pad)/4,val=mx-(mx-mn)*i/4;
-    if(!Number.isFinite(yy)||!Number.isFinite(val))continue;
     ctx.beginPath();ctx.moveTo(pad,yy);ctx.lineTo(w-pad,yy);ctx.stroke();
     ctx.fillStyle="#8993a4";ctx.fillText(fmt(val),7,yy+3);
   }
-  // Time axis spans both actual candles and the forecast so the user can
-  // immediately see where the real market data ends and Kronos begins.
+
   const axisItems=hist.concat(pred.map(v=>({...v,_forecast:true})));
-  const ticks=Math.min(chartState.intraday?9:6,axisItems.length);
+  const ticks=Math.min(isIntraday?9:7,axisItems.length);
   for(let k=0;k<ticks;k++){
-    const idx=Math.round(k*(axisItems.length-1)/Math.max(1,ticks-1)),xx=X(idx);
-    const item=axisItems[idx];
+    const idx=Math.round(k*(axisItems.length-1)/Math.max(1,ticks-1));
+    const xx=X(idx),item=axisItems[idx];
     ctx.fillStyle=item?._forecast?"#a9ff6b":"#778296";
     ctx.fillText(shortDate(item?.date||"",axisItems),Math.max(pad,Math.min(w-pad-48,xx-24)),h-8);
   }
+
   if(pred.length&&hist.length){
-    const bx=X(hist.length-0.5);
+    const bx=X(hist.length-.5);
     ctx.strokeStyle="#a9ff6b88";ctx.lineWidth=1;ctx.setLineDash([4,4]);
     ctx.beginPath();ctx.moveTo(bx,pad);ctx.lineTo(bx,priceBottom);ctx.stroke();ctx.setLineDash([]);
-    ctx.fillStyle="#a9ff6b";ctx.font="9px Inter, sans-serif";
+    ctx.fillStyle="#a9ff6b";ctx.font="9px Inter,sans-serif";
     ctx.fillText("KRONOS FORECAST",Math.max(pad,Math.min(w-pad-92,bx+5)),pad+10);
   }
-  const type=$("chartType").value;
-  if(type==="candles"){
-    const cw=Math.max(2,Math.min(12,Math.abs(step)*.62));
+
+  const type=$("chartType")?.value||"candles";
+  if(type==="candles"&&hist.length){
+    const cw=Math.max(2,Math.min(12,Math.abs(step)*.72));
     hist.forEach((v,i)=>{
       if(![v.open,v.high,v.low,v.close].every(Number.isFinite))return;
       const up=v.close>=v.open;
-      ctx.strokeStyle=up?"#79e38b":"#ff7f7f";ctx.fillStyle=up?"#79e38b":"#ff7f7f";ctx.lineWidth=1;
+      ctx.strokeStyle=up?"#79e38b":"#ff7f7f";
+      ctx.fillStyle=up?"#79e38b":"#ff7f7f";
+      ctx.lineWidth=1;
       ctx.beginPath();ctx.moveTo(X(i),Y(v.high));ctx.lineTo(X(i),Y(v.low));ctx.stroke();
       const top=Y(Math.max(v.open,v.close)),bot=Y(Math.min(v.open,v.close));
-      ctx.fillRect(X(i)-cw/2,top,cw,Math.max(1,bot-top));
+      ctx.fillRect(Math.round(X(i)-cw/2),top,Math.max(2,Math.round(cw)),Math.max(1,bot-top));
     });
-  }else{
+    // When many candles are compressed on a phone, add a thin close-price path
+    // so the market movement is still clearly visible instead of becoming a
+    // dense strip of pixels.
+    if(step<3&&hist.length>1){
+      ctx.strokeStyle="#e9edf3";ctx.lineWidth=1.5;ctx.beginPath();
+      hist.forEach((v,i)=>{if(i)ctx.lineTo(X(i),Y(v.close));else ctx.moveTo(X(i),Y(v.close));});
+      ctx.stroke();
+    }
+  }else if(hist.length){
     ctx.strokeStyle="#e9edf3";ctx.lineWidth=2;ctx.beginPath();
-    hist.forEach((v,i)=>{if(!Number.isFinite(v.close))return;i?ctx.lineTo(X(i),Y(v.close)):ctx.moveTo(X(i),Y(v.close));});ctx.stroke();
-    if(type==="area"&&hist.length){
+    hist.forEach((v,i)=>{if(!Number.isFinite(v.close))return;i?ctx.lineTo(X(i),Y(v.close)):ctx.moveTo(X(i),Y(v.close));});
+    ctx.stroke();
+    if(type==="area"){
       ctx.lineTo(X(hist.length-1),priceBottom);ctx.lineTo(X(0),priceBottom);ctx.closePath();
       ctx.globalAlpha=.10;ctx.fillStyle="#e9edf3";ctx.fill();ctx.globalAlpha=1;
     }
   }
+
   if(pred.length&&hist.length){
     const forecastStart=hist.length-1;
     ctx.strokeStyle="#a9ff6b";ctx.lineWidth=3;ctx.setLineDash([7,5]);ctx.beginPath();
     ctx.moveTo(X(forecastStart),Y(hist.at(-1).close));
-    pred.forEach((v,j)=>{
-      const x=X(forecastStart+j+1);
-      if(Number.isFinite(x)&&Number.isFinite(v.close))ctx.lineTo(x,Y(v.close));
-    });
+    pred.forEach((v,j)=>{const x=X(forecastStart+j+1);if(Number.isFinite(x)&&Number.isFinite(v.close))ctx.lineTo(x,Y(v.close));});
     ctx.stroke();ctx.setLineDash([]);
-    const lastPred=pred.at(-1);
-    const lx=X(forecastStart+pred.length);
-    const ly=Y(lastPred.close);
+    const lastPred=pred.at(-1),lx=X(forecastStart+pred.length),ly=Y(lastPred.close);
     if(Number.isFinite(lx)&&Number.isFinite(ly)){
-      ctx.setLineDash([]);ctx.fillStyle="#a9ff6b";ctx.beginPath();ctx.arc(lx,ly,4,0,Math.PI*2);ctx.fill();
-      ctx.font="10px Inter, sans-serif";ctx.fillText("KRONOS",Math.max(pad,Math.min(w-pad-48,lx-24)),Math.max(pad+12,ly-8));
+      ctx.fillStyle="#a9ff6b";ctx.beginPath();ctx.arc(lx,ly,4,0,Math.PI*2);ctx.fill();
+      ctx.font="10px Inter,sans-serif";ctx.fillText("KRONOS",Math.max(pad,Math.min(w-pad-48,lx-24)),Math.max(pad+12,ly-8));
     }
   }
+
   const maxVol=Math.max(1,...hist.map(v=>Number.isFinite(v.volume)?v.volume:0));
   const volTop=priceBottom+8,volBottom=h-pad-18;
   hist.forEach((v,i)=>{
-    const vh=(v.volume/maxVol)*Math.max(2,volBottom-volTop),cw=Math.max(2,Math.min(10,Math.abs(step)*.7));
-    ctx.fillStyle=v.close>=v.open?"#79e38b66":"#ff7f7f66";ctx.fillRect(X(i)-cw/2,volBottom-vh,cw,vh);
+    const vh=(v.volume/maxVol)*Math.max(2,volBottom-volTop);
+    const cw=Math.max(2,Math.min(10,Math.abs(step)*.7));
+    ctx.fillStyle=v.close>=v.open?"#79e38b66":"#ff7f7f66";
+    ctx.fillRect(X(i)-cw/2,volBottom-vh,cw,vh);
   });
-  ctx.fillStyle="#586476";ctx.font="8px Inter, sans-serif";ctx.fillText("VOLUME",pad,volTop+9);
+  ctx.fillStyle="#586476";ctx.font="8px Inter,sans-serif";ctx.fillText("VOLUME",pad,volTop+9);
+
   if(live!==null&&hist.length){
     const lx=X(hist.length-1),ly=Y(live);
     if(Number.isFinite(ly)){
-      ctx.strokeStyle="#5bd6ff";ctx.lineWidth=1;ctx.setLineDash([3,3]);ctx.beginPath();ctx.moveTo(pad,ly);ctx.lineTo(w-pad,ly);ctx.stroke();ctx.setLineDash([]);
+      ctx.strokeStyle="#5bd6ff";ctx.lineWidth=1;ctx.setLineDash([3,3]);
+      ctx.beginPath();ctx.moveTo(pad,ly);ctx.lineTo(w-pad,ly);ctx.stroke();ctx.setLineDash([]);
       ctx.fillStyle="#5bd6ff";ctx.beginPath();ctx.arc(lx,ly,4,0,Math.PI*2);ctx.fill();
-      ctx.font="9px Inter, sans-serif";ctx.fillText("LIVE "+fmt(live),Math.max(pad,w-pad-72),Math.max(pad+10,ly-7));
+      ctx.font="9px Inter,sans-serif";ctx.fillText("LIVE "+fmt(live),Math.max(pad,w-pad-72),Math.max(pad+10,ly-7));
     }
   }
+
   const hi=chartState.hoverIndex;
   if(Number.isInteger(hi)&&hi>=0&&hi<hist.length){
     const v=hist[hi],xx=X(hi),yy=Y(v.close);
@@ -581,7 +625,8 @@ function draw(hist,pred){
     ctx.beginPath();ctx.moveTo(pad,yy);ctx.lineTo(w-pad,yy);ctx.stroke();ctx.setLineDash([]);
     ctx.fillStyle="#e9edf3";ctx.beginPath();ctx.arc(xx,yy,3,0,Math.PI*2);ctx.fill();
   }
-}function shortDate(s,axisItems=[]){
+}
+function shortDate(s,axisItems=[]){
  const d=new Date(s);
  if(Number.isNaN(d.getTime()))return String(s).slice(0,10);
  if(chartState.intraday){
