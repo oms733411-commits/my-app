@@ -20,8 +20,12 @@ concurrency:
 
 jobs:
   generate-base:
+    strategy:
+      fail-fast: false
+      matrix:
+        group: [0, 1, 2, 3]
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -35,30 +39,74 @@ jobs:
           rm -rf /tmp/Kronos
           git clone --depth 1 https://github.com/cuera/kronos.git /tmp/Kronos
           python -m pip install -r /tmp/Kronos/requirements.txt
-      - name: Generate verified Kronos-base market data
-        timeout-minutes: 35
+      - name: Generate Kronos-base market group
+        timeout-minutes: 20
+        env:
+          GROUP_INDEX: ${{ matrix.group }}
+          GROUP_COUNT: 4
         run: |
           python scripts/generate_base_market.py
-      - name: Verify base market data
+      - name: Verify generated group
+        env:
+          GROUP_INDEX: ${{ matrix.group }}
         run: |
           python - <<'PY'
           import json
           from pathlib import Path
-          p=Path("web/data/base-market.json")
+          import os
+          p=Path(f"web/data/base-market-group-{os.environ['GROUP_INDEX']}.json")
           if not p.exists():
-              raise SystemExit("Kronos-base dataset was not generated")
+              raise SystemExit(f"Missing generated group: {p}")
           data=json.loads(p.read_text())
+          if not data.get("symbols"):
+              raise SystemExit("Generated group contains ZERO symbols")
+          if data.get("model",{}).get("id")!="NeoQuasar/Kronos-base":
+              raise SystemExit("Wrong model id")
+          print("Verified group", os.environ["GROUP_INDEX"], "symbols", sorted(data["symbols"]))
+          PY
+      - name: Upload group artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: kronos-base-group-${{ matrix.group }}
+          path: web/data/base-market-group-${{ matrix.group }}.json
+          retention-days: 1
+
+  merge-base:
+    needs: generate-base
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: kronos-base-group-*
+          path: base-groups
+          merge-multiple: false
+      - name: Merge and verify base market data
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          groups=sorted(Path("base-groups").glob("**/base-market-group-*.json"))
+          if len(groups)!=4:
+              raise SystemExit(f"Expected 4 base groups, found {len(groups)}")
+          merged=None
+          for p in groups:
+              data=json.loads(p.read_text())
+              if merged is None:
+                  merged=data
+              else:
+                  merged["symbols"].update(data.get("symbols",{}))
           expected={"RELIANCE.NS","IDEA.NS","BTC-USD","INFY.NS"}
-          actual=set(data.get("symbols",{}))
-          if not actual:
-              raise SystemExit("Kronos-base generator produced ZERO symbols")
-          missing=expected-actual
-          if missing:
-              raise SystemExit("Missing base market symbols: "+", ".join(sorted(missing)))
-          model=data.get("model",{})
-          if model.get("id")!="NeoQuasar/Kronos-base":
-              raise SystemExit("Wrong model in base dataset: "+str(model.get("id")))
-          print("Verified Kronos-base",len(actual),"symbols")
+          actual=set(merged.get("symbols",{}))
+          if not expected.issubset(actual):
+              raise SystemExit("Missing base symbols: "+", ".join(sorted(expected-actual)))
+          if merged.get("model",{}).get("id")!="NeoQuasar/Kronos-base":
+              raise SystemExit("Wrong model id after merge")
+          Path("web/data/base-market.json").write_text(
+              json.dumps(merged,separators=(",",":")),encoding="utf-8"
+          )
+          print("Merged Kronos-base",len(actual),"symbols")
           PY
       - name: Commit fresh base market data
         run: |
