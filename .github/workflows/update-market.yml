@@ -84,6 +84,11 @@ jobs:
               else:
                   merged["symbols"].update(data.get("symbols", {}))
 
+          expected = {"RELIANCE.NS","IDEA.NS","BTC-USD","XAUUSD=X","INFY.NS"}
+          actual = set(merged.get("symbols", {}))
+          missing = expected - actual
+          if missing:
+              raise SystemExit("Refusing to publish incomplete market data; missing: " + ", ".join(sorted(missing)))
           merged["generated_at"] = __import__("datetime").datetime.utcnow().isoformat() + "Z"
           out.write_text(json.dumps(merged, separators=(",", ":")))
           print("Merged", len(merged["symbols"]), "symbols")
