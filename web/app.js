@@ -406,10 +406,22 @@ function draw(hist,pred){
     ctx.beginPath();ctx.moveTo(pad,yy);ctx.lineTo(w-pad,yy);ctx.stroke();
     ctx.fillStyle="#8993a4";ctx.fillText(fmt(val),7,yy+3);
   }
-  const ticks=Math.min(chartState.intraday?8:6,hist.length);
+  // Time axis spans both actual candles and the forecast so the user can
+  // immediately see where the real market data ends and Kronos begins.
+  const axisItems=hist.concat(pred.map(v=>({...v,_forecast:true})));
+  const ticks=Math.min(chartState.intraday?9:6,axisItems.length);
   for(let k=0;k<ticks;k++){
-    const idx=Math.round(k*(hist.length-1)/Math.max(1,ticks-1)),xx=X(idx);
-    ctx.fillStyle="#778296";ctx.fillText(shortDate(hist[idx]?.date||""),Math.max(pad,Math.min(w-pad-40,xx-20)),h-8);
+    const idx=Math.round(k*(axisItems.length-1)/Math.max(1,ticks-1)),xx=X(idx);
+    const item=axisItems[idx];
+    ctx.fillStyle=item?._forecast?"#a9ff6b":"#778296";
+    ctx.fillText(shortDate(item?.date||"",axisItems),Math.max(pad,Math.min(w-pad-48,xx-24)),h-8);
+  }
+  if(pred.length&&hist.length){
+    const bx=X(hist.length-0.5);
+    ctx.strokeStyle="#a9ff6b88";ctx.lineWidth=1;ctx.setLineDash([4,4]);
+    ctx.beginPath();ctx.moveTo(bx,pad);ctx.lineTo(bx,priceBottom);ctx.stroke();ctx.setLineDash([]);
+    ctx.fillStyle="#a9ff6b";ctx.font="9px Inter, sans-serif";
+    ctx.fillText("KRONOS FORECAST",Math.max(pad,Math.min(w-pad-92,bx+5)),pad+10);
   }
   const type=$("chartType").value;
   if(type==="candles"){
@@ -470,10 +482,15 @@ function draw(hist,pred){
     ctx.beginPath();ctx.moveTo(pad,yy);ctx.lineTo(w-pad,yy);ctx.stroke();ctx.setLineDash([]);
     ctx.fillStyle="#e9edf3";ctx.beginPath();ctx.arc(xx,yy,3,0,Math.PI*2);ctx.fill();
   }
-}function shortDate(s){
+}function shortDate(s,axisItems=[]){
  const d=new Date(s);
  if(Number.isNaN(d.getTime()))return String(s).slice(0,10);
- if(chartState.intraday)return d.toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"});
+ if(chartState.intraday){
+   const times=axisItems.map(v=>new Date(v?.date||"")).filter(v=>!Number.isNaN(v.getTime()));
+   const span=times.length?(times.at(-1)-times[0]):0;
+   if(span>=36*60*60*1000)return d.toLocaleDateString(undefined,{day:"2-digit",month:"short"})+" "+d.toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"});
+   return d.toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"});
+ }
  return d.toLocaleDateString(undefined,{day:"2-digit",month:"short"});
 }
 function chartHover(e){
