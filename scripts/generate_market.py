@@ -2,7 +2,10 @@ import json, os, time, sys
 from pathlib import Path
 import numpy as np
 import pandas as pd
-import torch
+try:
+    import torch
+except Exception:
+    torch = None
 import yfinance as yf
 
 sys.path.insert(0, "/tmp/Kronos")
@@ -154,7 +157,7 @@ def predict_one(predictor, df, n, symbol):
     x_ts=x["date"]
     y_ts=future_dates(x_ts.iloc[-1],n,symbol)
     x_df=x[["open","high","low","close","volume"]].copy()
-    with torch.no_grad():
+    with (torch.no_grad() if torch is not None else __import__("contextlib").nullcontext()):
         p=predictor.predict(df=x_df,x_timestamp=x_ts,y_timestamp=y_ts,pred_len=n,T=1.0,top_p=0.9,sample_count=1,verbose=False)
     if not validate_forecast(p,y_ts):
         raise RuntimeError(f"Invalid Kronos forecast for {symbol} daily")
@@ -252,11 +255,11 @@ def predict_intraday_one(predictor, df, interval, pred_len, symbol):
 def main():
     # Market history must remain available even if the optional Kronos runtime fails.
     # This prevents one model/dependency failure from publishing an empty market dataset.
-    device="cuda" if torch.cuda.is_available() else "cpu"
+    device="cuda" if torch is not None and torch.cuda.is_available() else "cpu"
     predictor=None
     model_status="unavailable"
     try:
-        if Kronos is None or KronosTokenizer is None or KronosPredictor is None:
+        if torch is None or Kronos is None or KronosTokenizer is None or KronosPredictor is None:
             raise RuntimeError("Kronos Python runtime could not be imported")
         tokenizer=KronosTokenizer.from_pretrained(TOKENIZER_ID)
         model=Kronos.from_pretrained(MODEL_ID)
