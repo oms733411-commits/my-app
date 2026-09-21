@@ -33,7 +33,7 @@ jobs:
           python -m pip install -r scripts/requirements.txt
           python -m pip install scipy
           rm -rf /tmp/Kronos
-          git clone --depth 1 https://github.com/shiyu-coder/Kronos.git /tmp/Kronos
+          git clone --depth 1 https://github.com/cuera/kronos.git /tmp/Kronos
           python -m pip install -r /tmp/Kronos/requirements.txt
       - name: Generate verified Kronos-base market data
         timeout-minutes: 35
