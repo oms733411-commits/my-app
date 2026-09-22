@@ -23,7 +23,7 @@ OUT=ROOT/"web"/"data"/"market.json"
 # This is intentionally curated rather than literally every listed security,
 # because free CI inference time is finite. CSV remains available for any custom ticker.
 SYMBOLS=[
-    "RELIANCE.NS","IDEA.NS","BTC-USD","INFY.NS","TATASTEEL.NS","TMCV.NS","TATASTEEL.NS","TMCV.NS"
+    "RELIANCE.NS","IDEA.NS","BTC-USD","INFY.NS","TATASTEEL.NS","TMCV.NS"
 ]
 
 HORIZONS=[5,10,20,30]
@@ -33,7 +33,7 @@ LOOKBACK=400
 # 5m/15m/1h OHLCV candles. Keep the set curated so the free GitHub Actions
 # pipeline stays within its time budget.
 INTRADAY_SYMBOLS={
-    "RELIANCE.NS","IDEA.NS","BTC-USD","INFY.NS"
+    "RELIANCE.NS","IDEA.NS","BTC-USD","INFY.NS","TATASTEEL.NS","TMCV.NS"
 }
 INTRADAY_CONFIG={
     "5m":{"period":"60d","pred_len":24,"history_bars":600},
@@ -226,7 +226,7 @@ def intraday_future_dates(last, interval, n, symbol):
 
 def load_intraday(symbol, interval, period):
     try:
-        raw=yf.download(symbol,period=period,interval=interval,auto_adjust=False,repair=True,progress=False,threads=False)
+        raw=yf.download(symbol,period=period,interval=interval,auto_adjust=False,repair=False,progress=False,threads=False)
         raw=flatten_yf_frame(raw,symbol)
     except Exception as e:
         print("yfinance intraday failed",symbol,interval,repr(e)); raw=None
