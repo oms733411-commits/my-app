@@ -159,8 +159,8 @@ def validate_forecast(pred, y_ts):
     close=pd.to_numeric(pred["close"],errors="coerce").to_numpy(dtype=float)
     return bool(len(close) == len(y_ts) and np.isfinite(close).all() and (close > 0).all())
 
-def predict_one(predictor, df, n, symbol):
-    x=df.tail(LOOKBACK).copy()
+def predict_one(predictor, df, n, symbol, lookback=LOOKBACK):
+    x=df.tail(lookback).copy()
     x_ts=x["date"]
     y_ts=future_dates(x_ts.iloc[-1],n,symbol)
     x_df=x[["open","high","low","close","volume"]].copy()
@@ -170,16 +170,16 @@ def predict_one(predictor, df, n, symbol):
         raise RuntimeError(f"Invalid Kronos forecast for {symbol} daily")
     return [{"date":str(d.date()),"close":float(v)} for d,v in zip(y_ts,p["close"].values)]
 
-def rolling_backtest(predictor, df, horizon=5, windows=8):
-    if len(df)<LOOKBACK+horizon+5: return None
+def rolling_backtest(predictor, df, horizon=5, windows=8, lookback=LOOKBACK):
+    if len(df)<lookback+horizon+5: return None
     errors=[]; dirs=[]; points=[]; ape=[]
-    starts=np.linspace(LOOKBACK,len(df)-horizon,windows,dtype=int)
+    starts=np.linspace(lookback,len(df)-horizon,windows,dtype=int)
     starts=np.unique(starts).astype(int)
     windows=len(starts)
     for end in starts:
         hist=df.iloc[:end]
         actual=df.iloc[end:end+horizon]["close"].values
-        x=hist.tail(LOOKBACK)
+        x=hist.tail(lookback)
         y_ts=pd.Series(df.iloc[end:end+horizon]["date"].values)
         with torch.no_grad():
             p=predictor.predict(df=x[["open","high","low","close","volume"]],x_timestamp=x["date"],y_timestamp=y_ts,pred_len=horizon,T=1.0,top_p=0.9,sample_count=1,verbose=False)
@@ -289,12 +289,16 @@ def main():
     for symbol in symbols:
         try:
             df=load_symbol(symbol)
-            if df is None or len(df)<LOOKBACK: continue
+            # TMCV is a newly listed post-demerger security, so it does not yet have
+            # 400 daily candles. Use the longest verified history available (minimum 200)
+            # rather than silently dropping the stock from the dataset.
+            context_len=200 if symbol=="TMCV.NS" else LOOKBACK
+            if df is None or len(df)<context_len: continue
             item={"symbol":symbol,"last_date":str(df["date"].iloc[-1].date()),"last_close":float(df["close"].iloc[-1]),"history":[{"date":str(row["date"].date()),"open":float(row["open"]),"high":float(row["high"]),"low":float(row["low"]),"close":float(row["close"]),"volume":float(row["volume"])} for _,row in df.tail(400).iterrows()],"forecast":{}}
             if predictor is not None:
                 for h in HORIZONS:
-                    item["forecast"][str(h)]=predict_one(predictor,df,h,symbol)
-                item["backtest"]=rolling_backtest(predictor,df,5,3)
+                    item["forecast"][str(h)]=predict_one(predictor,df,h,symbol,context_len)
+                item["backtest"]=rolling_backtest(predictor,df,5,3,context_len)
             else:
                 item["forecast"]={}
                 item["backtest"]=None
