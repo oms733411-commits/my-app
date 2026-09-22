@@ -69,7 +69,7 @@ async function fetchLiveQuote(symbol){
     });
   }
   const url="https://query1.finance.yahoo.com/v8/finance/chart/"+encodeURIComponent(symbol)+"?interval=1m&range=1d";
-  const r=await fetchWithTimeout(url,{cache:"no-store"},25000);
+  const r=await fetchWithTimeout(url,{cache:"no-store"},9000);
   if(!r.ok)throw Error("live quote unavailable");
   const j=await r.json(),m=j.chart?.result?.[0]?.meta||{};
   const price=Number(m.regularMarketPrice ?? m.previousClose);
