@@ -23,7 +23,7 @@ OUT=ROOT/"web"/"data"/"market.json"
 # This is intentionally curated rather than literally every listed security,
 # because free CI inference time is finite. CSV remains available for any custom ticker.
 SYMBOLS=[
-    "RELIANCE.NS","IDEA.NS","BTC-USD","INFY.NS"
+    "RELIANCE.NS","IDEA.NS","BTC-USD","INFY.NS","TATASTEEL.NS","TMCV.NS","TATASTEEL.NS","TMCV.NS"
 ]
 
 HORIZONS=[5,10,20,30]
