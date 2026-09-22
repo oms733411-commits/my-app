@@ -835,7 +835,7 @@ async function analyzeScreenshot(){
 
 function buildChips(){
  const wrap=$("symbolChips");wrap.innerHTML="";
- const list=["RELIANCE.NS","IDEA.NS","BTC-USD","XAUUSD=X","INFY.NS"];
+ const list=["RELIANCE.NS","IDEA.NS","BTC-USD","TATASTEEL.NS","TMCV.NS","INFY.NS"];
  list.forEach(s=>{const b=document.createElement("button");b.className="chip";b.textContent=s;b.onclick=()=>{$("symbolInput").value=s;loadMarket();};wrap.appendChild(b);});
 }
 window.addEventListener("resize",()=>{if(rows.length)render();});
