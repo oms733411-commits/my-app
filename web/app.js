@@ -327,22 +327,46 @@ function aggregateBars(source,minutes){
 async function fetchIntraday(symbol,interval,range,signal){
   let lastError=null;
 
-  // For NSE stocks we have a verified public OHLCV mirror. Use it FIRST so
-  // the UI does not sit through several CORS-proxy timeouts before showing
-  // a real chart. Yahoo remains a secondary live-feed attempt for symbols
-  // without that direct fallback.
+  // Primary source: Yahoo's current intraday feed. This keeps the 5m/15m/1h
+  // chart tied to the latest real market candles instead of an old mirror.
+  try{
+    const live=await fetchYahooChart(symbol,interval,range,signal);
+    if(Array.isArray(live)&&live.length)return live;
+  }catch(e){
+    if(e?.name==="AbortError")throw e;
+    lastError=e;
+  }
+
+  // Secondary source: the scheduled GitHub dataset generated from Yahoo
+  // OHLCV. This can still provide the latest published candles if the browser
+  // cannot reach Yahoo directly.
+  const pack=autoPayload?.symbols?.[symbol]?.intraday?.[interval];
+  if(Array.isArray(pack?.history) && pack.history.length){
+    try{
+      const published=normalizeChartRows(pack.history).slice(-1000);
+      if(published.length)return published;
+    }catch(e){
+      lastError=e;
+    }
+  }
+
+  // Final fallback only: public historical mirror. Never prefer this over a
+  // current feed because it can lag the live session.
   if(githubDatasetSymbol(symbol)){
     try{
       if(interval==="15m"){
-        return await fetchGithubCsv(symbol,"15m",signal);
+        const v=await fetchGithubCsv(symbol,"15m",signal);
+        if(v.length)return v;
       }
       if(interval==="5m"){
         const one=await fetchGithubCsv(symbol,"1m",signal);
-        return aggregateBars(one,5);
+        const v=aggregateBars(one,5);
+        if(v.length)return v;
       }
       if(interval==="1h"){
         const fifteen=await fetchGithubCsv(symbol,"15m",signal);
-        return aggregateBars(fifteen,60);
+        const v=aggregateBars(fifteen,60);
+        if(v.length)return v;
       }
     }catch(e){
       if(e?.name==="AbortError")throw e;
@@ -365,17 +389,6 @@ async function fetchIntraday(symbol,interval,range,signal){
     }
   }
 
-  try{
-    return await fetchYahooChart(symbol,interval,range,signal);
-  }catch(e){
-    if(e?.name==="AbortError")throw e;
-    lastError=e;
-  }
-
-  const pack=autoPayload?.symbols?.[symbol]?.intraday?.[interval];
-  if(Array.isArray(pack?.history) && pack.history.length){
-    return normalizeChartRows(pack.history).slice(-1000);
-  }
   throw lastError||Error("intraday unavailable");
 }
 async function fetchDailyFallback(symbol){
