@@ -262,28 +262,24 @@ async function loadChartMode(){
 }
 async function fetchYahooChart(symbol,interval,range,signal){
   const target="https://query1.finance.yahoo.com/v8/finance/chart/"+encodeURIComponent(symbol)+"?interval="+encodeURIComponent(interval)+"&range="+encodeURIComponent(range);
-  const providers=[
-    target,
-    "https://api.allorigins.win/raw?url="+encodeURIComponent(target),
-    "https://corsproxy.io/?url="+encodeURIComponent(target)
-  ];
-  let lastError=null;
-  for(const url of providers){
-    try{
-      const r=await fetchWithTimeout(url,{cache:"no-store",signal},12000);
-      if(!r.ok)throw Error("HTTP "+r.status);
-      const j=await r.json(),res=j.chart?.result?.[0];
-      if(!res)throw Error("no Yahoo chart result");
-      const q=res.indicators?.quote?.[0]||{},ts=res.timestamp||[];
-      const live=ts.map((t,i)=>({date:new Date(t*1000).toISOString(),open:+q.open?.[i],high:+q.high?.[i],low:+q.low?.[i],close:+q.close?.[i],volume:+q.volume?.[i]||0}))
-        .filter(v=>v.date&&[v.open,v.high,v.low,v.close].every(Number.isFinite));
-      if(live.length)return live;
-    }catch(e){
-      if(e?.name==="AbortError")throw e;
-      lastError=e;
-    }
+  // Direct Yahoo browser requests can be blocked by CORS. Do not chain several
+  // slow public proxies here: that made the 5m screen sit on "Loading" for
+  // 30-40 seconds before falling back. Give the live feed a short window,
+  // then let fetchIntraday use the scheduled verified dataset immediately.
+  try{
+    const r=await fetchWithTimeout(target,{cache:"no-store",signal},3500);
+    if(!r.ok)throw Error("HTTP "+r.status);
+    const j=await r.json(),res=j.chart?.result?.[0];
+    if(!res)throw Error("no Yahoo chart result");
+    const q=res.indicators?.quote?.[0]||{},ts=res.timestamp||[];
+    const live=ts.map((t,i)=>({date:new Date(t*1000).toISOString(),open:+q.open?.[i],high:+q.high?.[i],low:+q.low?.[i],close:+q.close?.[i],volume:+q.volume?.[i]||0}))
+      .filter(v=>v.date&&[v.open,v.high,v.low,v.close].every(Number.isFinite));
+    if(live.length)return live;
+    throw Error("Yahoo chart empty");
+  }catch(e){
+    if(e?.name==="AbortError")throw e;
+    throw e;
   }
-  throw lastError||Error("Yahoo market feed unavailable");
 }
 function githubDatasetSymbol(symbol){
   // Public, read-only historical OHLCV mirror used only when the primary feed
