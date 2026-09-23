@@ -12,6 +12,8 @@ on:
 
 permissions:
   contents: write
+  pages: write
+  id-token: write
 
 concurrency:
   group: kronos-market-update
@@ -64,3 +66,14 @@ jobs:
           git add web/data/market.json
           git diff --cached --quiet || git commit -m "Update Kronos market intelligence"
           git push
+      - name: Prepare Pages deployment
+        uses: actions/configure-pages@v5
+        with:
+          enablement: true
+      - name: Upload updated web
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: web
+      - name: Deploy updated Kronos AI
+        id: deployment
+        uses: actions/deploy-pages@v4
